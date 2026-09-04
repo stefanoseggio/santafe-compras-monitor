@@ -1,0 +1,60 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "actorSpecification": 1,
+    "title": "Dataset Schema",
+    "fields": {
+        "type": "object",
+        "properties": {
+            "idGestion": { "title": "ID Gestion", "type": "string" },
+            "estado": { "title": "Estado", "type": "string", "description": "AP, ET or CO" },
+            "tipoGestion": { "title": "Tipo Gestion", "type": "string" },
+            "numeroGestion": { "title": "Numero Gestion", "type": "string" },
+            "anioGestion": { "title": "Anio Gestion", "type": "string" },
+            "fechaHoraApertura": { "title": "Fecha Apertura", "type": "string" },
+            "objeto": { "title": "Objeto", "type": "string" },
+            "comprador": { "title": "Comprador", "type": "string" },
+            "valorPliego": { "title": "Valor Pliego", "type": "string" },
+            "numeroExpediente": { "title": "Numero Expediente", "type": "string" },
+            "detailUrl": { "title": "Detail URL", "type": "string" },
+            "detail": {
+                "title": "Detail",
+                "type": ["object", "null"],
+                "properties": {
+                    "fields": { "type": "object" },
+                    "rubros": { "type": "array", "items": { "type": "string" } },
+                    "documentos": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "tipo": { "type": "string" },
+                                "nombre": { "type": "string" },
+                                "url": { "type": "string" }
+                            }
+                        }
+                    }
+                }
+            },
+            "scrapedAt": { "title": "Scraped at", "type": "string" }
+        }
+    },
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": ["idGestion", "tipoGestion", "comprador", "objeto", "fechaHoraApertura", "estado"]
+            },
+            "display": {
+                "component": "table",
+                "columns": [
+                    { "label": "ID", "format": "text", "field": "idGestion" },
+                    { "label": "Tipo", "format": "text", "field": "tipoGestion" },
+                    { "label": "Comprador", "format": "text", "field": "comprador" },
+                    { "label": "Objeto", "format": "text", "field": "objeto" },
+                    { "label": "Apertura", "format": "text", "field": "fechaHoraApertura" },
+                    { "label": "Estado", "format": "text", "field": "estado" }
+                ]
+            }
+        }
+    }
+}

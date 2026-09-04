@@ -1,0 +1,34 @@
+{
+    "$schema": "https://apify.com/schemas/v1/input.ide.json",
+    "title": "Santa Fe Compras Monitor Configuration",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "estados": {
+            "title": "States to extract",
+            "type": "array",
+            "description": "Which process states to fetch. AP = upcoming openings, ET = in progress, CO = concluded/awarded.",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["AP", "ET", "CO"],
+                "enumTitles": ["Apertura Proxima (upcoming openings)", "En Tramite (in progress)", "Concluido (awarded/closed)"]
+            },
+            "default": ["AP"],
+            "minItems": 1
+        },
+        "fetchDetail": {
+            "title": "Fetch full detail per process",
+            "type": "boolean",
+            "description": "When enabled (default), fetches each process's detail page for full description, rubros, organism and direct document links (pliego, resolucion, etc). Disable for a faster, listing-only run.",
+            "default": true
+        },
+        "maxItems": {
+            "title": "Max processes to extract",
+            "type": "integer",
+            "description": "Hard cap on the number of processes returned this run, across all selected states.",
+            "default": 100,
+            "minimum": 1
+        }
+    }
+}

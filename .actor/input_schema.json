@@ -12,7 +12,11 @@
             "items": {
                 "type": "string",
                 "enum": ["AP", "ET", "CO"],
-                "enumTitles": ["Apertura Proxima (upcoming openings)", "En Tramite (in progress)", "Concluido (awarded/closed)"]
+                "enumTitles": [
+                    "Apertura Proxima (upcoming openings)",
+                    "En Tramite (in progress)",
+                    "Concluido (awarded/closed)"
+                ]
             },
             "default": ["AP"],
             "minItems": 1
@@ -29,6 +33,20 @@
             "description": "Hard cap on the number of processes returned this run, across all selected states.",
             "default": 100,
             "minimum": 1
+        },
+        "onlyNew": {
+            "title": "Delta mode - only new processes since last run",
+            "type": "boolean",
+            "description": "When enabled, persists seen process ids between runs (in this actor's own key-value store, per estado) and returns only processes not seen in a prior run. NOTE: this source's listing order is not reliably newest-first (AP is sorted by soonest-opening-date, not recency; ET/CO show no correlation between position and id or date at all - verified live), so pagination always walks the full listing up to maxItems as it does today, and the unseen-only filter is applied after that fetch rather than short-circuiting it early. Recommended for recurring monitoring; leave off for a full one-off extraction.",
+            "default": false
+        },
+        "dateRange": {
+            "title": "Filter by recency (opening date)",
+            "type": "string",
+            "description": "Optionally restrict results to processes whose own fechaHoraApertura (bid opening date/time) falls within this window of now. Independent of onlyNew - note this is a scheduling date, not a publication date: for AP (upcoming openings) it's necessarily in the future, so this answers 'opening in the next Nh/d', not 'discovered in the last Nh/d'. onlyNew is the more reliable 'what's new' signal for recurring monitoring; use this when you specifically want the source's own opening-date semantics.",
+            "editor": "select",
+            "enum": ["24h", "7d", "30d"],
+            "enumTitles": ["Next/last 24 hours", "Next/last 7 days", "Next/last 30 days"]
         }
     }
 }

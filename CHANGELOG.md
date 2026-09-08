@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 - 2026-09-08
+
+### Fixed
+
+- **Cold-baseline delta correctness**: the first delta run used to compare unseen rows against an `idGestion` threshold (`baselineFloor`) to decide what counts as history. `idGestion` is assigned at process creation, not at the moment a row enters a given estado list, so a process opened months ago can surface in ET or CO today carrying an id lower than everything already delivered - the threshold comparison could wrongly treat a genuinely new status change as history. The cold run now walks every selected list to completion (instead of stopping at `maxItems`), delivers only the newest `maxItems` rows, and records everything else it meets as baseline directly in the seen-set - a snapshot, not a numeric comparison that out-of-order ids can defeat. Cloud-verified: a cold run on the real register walked a 2,211-row ET list across 2 pages to the end, delivered the 100 newest, and a follow-up run 30 seconds later delivered 0 with 363 known open records re-checked for silent amendments (0 changed).
+- Production `start` script pointed at `start:dev` (`tsx`), which Apify's production image cannot run (`npm install --only=prod` strips `tsx`); the run would have crashed on the platform despite working locally. Switched to the prebuilt `dist/main.js` and stopped gitignoring `dist/` so the build actually ships.
+- `.actor/actor.json` description was 340 characters, over Apify's 300-character limit; trimmed to 297.
+
 ## 2.0.0 - 2026-09-08
 
 The "institutional-grade" release: same envelope and field names, far more data, server-side filters, and a delta engine that finally sees status changes and amended documents.

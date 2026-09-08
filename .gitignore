@@ -2,7 +2,6 @@
 .idea
 .vscode
 .zed
-dist
 node_modules
 apify_storage
 storage

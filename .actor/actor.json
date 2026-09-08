@@ -3,7 +3,7 @@
     "actorSpecification": 1,
     "name": "santafe-compras-monitor",
     "title": "Santa Fe Tenders Scraper & Monitor (Licitaciones Santa Fe)",
-    "description": "Scrape and monitor every public tender of the Province of Santa Fe, Argentina (Gestiones de Compra): licitaciones, concursos, contrataciones directas of ministries and hospitals with buyer, budget, deadlines, rubros, expediente and pliego/circular/acta PDF links. Server-side filters, delta mode for new, status-changed and amended tenders.",
+    "description": "Scrape and monitor every public tender of the Province of Santa Fe, Argentina: licitaciones, concursos, contrataciones directas of ministries and hospitals with buyer, budget, deadlines, rubros, expediente and pliego/circular/acta PDF links. Delta mode for new, status-changed and amended tenders.",
     "version": "2.0",
     "buildTag": "latest",
     "minMemoryMbytes": 256,

@@ -256,21 +256,27 @@ describe('walkListing against live-captured listing pages', () => {
         expect(recovered.stopReason).toBe('end-of-results');
     });
 
-    it('delta: a baseline floor from a truncated COLD run keeps older unseen rows out - history, not backlog', async () => {
-        // The cold run delivered the 10 newest AP rows; the other 68 must stay undelivered forever.
+    it('delta: a COLD baseline walk snapshots the whole list, delivering only the newest maxItems and recording the rest as history', async () => {
+        // A COLD run (empty seen-map) with coldBaseline=true must NOT early-stop or
+        // truncate at maxItems: it walks every selected list to the end so nothing
+        // present today is missed from the snapshot.
         serve({ AP: [AP] });
-        const delivered = ids(AP).slice(0, 10);
-        const seen = Object.fromEntries(delivered.map((id) => [id, encodeSeen('AP', 'h')]));
-        const baselineFloor = Number(delivered.at(-1));
+        const top10 = ids(AP).slice(0, 10);
 
-        const drained = await walk({ onlyNew: true, seen, watermark: 139_031 });
-        expect(drained.candidates.length).toBe(68); // without a baseline the register would drain
+        const cold = await walk({ onlyNew: true, seen: {}, maxItems: 10, coldBaseline: true });
+        expect(cold.candidates.map((c) => c.idGestion)).toEqual(top10);
+        expect(cold.excluded.filter((c) => c.excludedBy === 'baseline').length).toBe(68);
+        expect(cold.truncatedByMaxItems).toBe(true);
+        expect(cold.stopReason).toBe('end-of-results'); // ran to the end despite the maxItems overflow
+        expect(cold.walkedToEnd.has('AP')).toBe(true);
 
-        const baseline = await walk({ onlyNew: true, seen, watermark: 139_031, baselineFloor });
-        expect(baseline.candidates).toEqual([]);
-        expect(baseline.excluded.filter((c) => c.excludedBy === 'baseline').length).toBe(68);
-        expect(baseline.excluded.filter((c) => c.excludedBy === 'unchanged').length).toBe(10);
-        expect(baseline.stopReason).toBe('end-of-results');
+        // Once every row from that snapshot is marked seen (the 10 delivered plus the
+        // 68 recorded as baseline, exactly what main.ts does), a later non-cold run
+        // must not drain the register: id order is not what kept it quiet.
+        const seen = seenAll(AP, 'AP');
+        const settled = await walk({ onlyNew: true, seen, watermark: Number(top10[0]), coldBaseline: false });
+        expect(settled.candidates).toEqual([]); // no id-ordering drain: every row was actually marked seen
+        expect(settled.pagesWalked).toBe(1); // AP is a single page (78 rows = totalRecords)
     });
 
     it('refuses to mistake a maintenance page or a refused query for "nothing new" - it retries, then fails loudly', async () => {

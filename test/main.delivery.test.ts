@@ -92,10 +92,15 @@ describe('main.ts delivery semantics', () => {
             lastRunAt: string;
         };
         expect(state).toBeDefined();
-        expect(Object.keys(state.seen).sort()).toEqual([...expectedDelivered].sort());
+        // A COLD run walks the whole 78-row list regardless of maxItems/spending limit:
+        // the 4 charged records plus the 68 rows outside the top 10 are marked seen as
+        // the baseline snapshot; only the 6 newest-but-uncharged rows stay unseen for
+        // the next run to pick up (and charge).
+        const baselineIds = AP_IDS.slice(10);
+        const expectedSeen = [...expectedDelivered, ...baselineIds].sort();
+        expect(Object.keys(state.seen).sort()).toEqual(expectedSeen);
         expect(Object.values(state.seen).every((v) => v === 'AP|')).toBe(true); // listing-only: no fingerprint yet
-        // A COLD run (empty store) cut short by maxItems (10 < 78 rows) defines the
-        // baseline: the oldest row it reached becomes the floor - and leaves no backlog.
+        // Informational only now: the oldest id among the 10 rows selected for the snapshot.
         expect(state.baselineFloor).toBe(Number(top10.at(-1)));
         expect(state.backlogFloor).toBeNull();
         // The watermark is the highest DELIVERED id - the undelivered (newer) rows must still be walked next run.

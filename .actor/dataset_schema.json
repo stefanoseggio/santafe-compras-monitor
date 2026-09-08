@@ -1,78 +1,868 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "actorSpecification": 1,
-    "title": "Dataset Schema",
+    "title": "Santa Fe tenders (Gestiones de Compra)",
+    "description": "One item per procurement process of the Province of Santa Fe's Gestiones de Compra register. The version-1 fields and the `detail` object are kept verbatim; normalised twins (UTC instants, numeric amounts with currency, document kinds, booleans) sit next to them. Records are appended oldest-first within a run; read newest-first with ?desc=true.",
     "fields": {
         "type": "object",
+        "additionalProperties": true,
         "properties": {
-            "idGestion": { "title": "ID Gestion", "type": "string" },
-            "estado": { "title": "Estado", "type": "string", "description": "AP, ET or CO" },
-            "tipoGestion": { "title": "Tipo Gestion", "type": "string" },
-            "numeroGestion": { "title": "Numero Gestion", "type": "string" },
-            "anioGestion": { "title": "Anio Gestion", "type": "string" },
-            "fechaHoraApertura": { "title": "Fecha Apertura", "type": "string" },
-            "objeto": { "title": "Objeto", "type": "string" },
-            "comprador": { "title": "Comprador", "type": "string" },
-            "valorPliego": { "title": "Valor Pliego", "type": "string" },
-            "numeroExpediente": { "title": "Numero Expediente", "type": "string" },
+            "record_id": {
+                "type": "string",
+                "title": "Record ID",
+                "description": "Same value as idGestion - stable across runs (e.g. 138825)."
+            },
+            "event_type": {
+                "type": "string",
+                "title": "Event type",
+                "description": "NEW_LISTING (never delivered before), STATUS_CHANGE (known process moved AP -> ET -> CO), UPDATED (known open process whose detail page changed: circular, acta, preadjudicación, new date...).",
+                "enum": ["NEW_LISTING", "STATUS_CHANGE", "UPDATED"]
+            },
+            "scraped_at": {
+                "type": "string",
+                "title": "Scraped at",
+                "description": "ISO-8601 UTC timestamp of this extraction (same for every record of one run)."
+            },
+            "is_new": {
+                "type": "boolean",
+                "title": "Is new",
+                "description": "true when this process was never delivered by a previous run of this delta state."
+            },
+            "source_url": {
+                "type": "string",
+                "title": "Source URL",
+                "description": "The official detail page (gestion.php?idGestion=...)."
+            },
+            "data_source": {
+                "type": "string",
+                "title": "Data source",
+                "description": "Attribution string (Gobierno de Santa Fe, CC BY-SA 2.5 AR)."
+            },
+            "idGestion": {
+                "type": "string",
+                "title": "ID gestión",
+                "description": "The register's own numeric process id, as a string.",
+                "example": "138825"
+            },
+            "estado": {
+                "type": "string",
+                "title": "Estado",
+                "description": "The list the process was found in: AP (Para Apertura), ET (En Trámite), CO (Concluida). For a STATUS_CHANGE found by the status sweep, the estado the detail page reports.",
+                "enum": ["AP", "ET", "CO"]
+            },
+            "tipoGestion": {
+                "type": ["string", "null"],
+                "title": "Tipo de gestión",
+                "description": "Procedure type as printed, e.g. LICITACIÓN PÚBLICA, CONTRATACIÓN DIRECTA."
+            },
+            "numeroGestion": {
+                "type": ["string", "null"],
+                "title": "Número de gestión",
+                "description": "Process number within the organism and year, e.g. 18."
+            },
+            "anioGestion": {
+                "type": ["string", "null"],
+                "title": "Año",
+                "description": "Year of the process number, e.g. 2026."
+            },
+            "fechaHoraApertura": {
+                "type": ["string", "null"],
+                "title": "Fecha de apertura (raw)",
+                "description": "Opening date as the listing prints it, DD-MM-YYYY. Null for a record rebuilt from the detail page only."
+            },
+            "objeto": {
+                "type": ["string", "null"],
+                "title": "Objeto",
+                "description": "Short subject of the tender."
+            },
+            "comprador": {
+                "type": ["string", "null"],
+                "title": "Comprador",
+                "description": "Buying organism (organismo licitante) as listed."
+            },
+            "valorPliego": {
+                "type": ["string", "null"],
+                "title": "Valor del pliego (raw)",
+                "description": "Price of the bid documents as free text ('NO APLICA', 'SIN COSTO', '$ 8209,50 (PESOS ...)')."
+            },
+            "numeroExpediente": {
+                "type": ["string", "null"],
+                "title": "Número de expediente (listing)",
+                "description": "File number as the listing prints it - often blank; see expediente for the detail-page value."
+            },
             "detail": {
-                "title": "Detail",
                 "type": ["object", "null"],
+                "title": "Detail (v1 shape)",
+                "description": "The version-1 detail object kept for compatibility: fields (label -> value), rubros[] and documentos[] {tipo, nombre, url}. Null when fetchDetail=false or the page is unavailable.",
                 "properties": {
-                    "fields": { "type": "object" },
-                    "rubros": { "type": "array", "items": { "type": "string" } },
+                    "fields": {
+                        "type": "object"
+                    },
+                    "rubros": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
                     "documentos": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "tipo": { "type": "string" },
-                                "nombre": { "type": "string" },
-                                "url": { "type": "string" }
+                                "tipo": {
+                                    "type": "string"
+                                },
+                                "nombre": {
+                                    "type": "string"
+                                },
+                                "url": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
                 }
             },
-            "record_id": {
-                "title": "Record ID",
-                "type": "string",
-                "description": "idGestion - stable across runs"
+            "idGestionNumber": {
+                "type": "integer",
+                "title": "ID gestión (number)",
+                "description": "idGestion as a number - the register's creation order and the delta engine's ordering key."
             },
-            "event_type": {
-                "title": "Event Type",
-                "type": "string",
-                "description": "Always NEW_LISTING - see AGENTS.md for why this domain has no more specific signal"
+            "numeroAnio": {
+                "type": ["string", "null"],
+                "title": "Número-año",
+                "description": "Human reference 'número-año', e.g. 18-2026."
             },
-            "scraped_at": {
-                "title": "Scraped At",
-                "type": "string",
-                "description": "ISO-8601 timestamp of this extraction"
+            "tipoGestionCode": {
+                "type": ["string", "null"],
+                "title": "Tipo de gestión (code)",
+                "description": "The site's letter code for tipoGestion (L, P, A, T, B, V, C, I, D, S, X, Y, O)."
             },
-            "is_new": {
-                "title": "Is New",
+            "tipoModalidad": {
+                "type": ["string", "null"],
+                "title": "Modalidad",
+                "description": "Contracting modality (Sin Modalidad, Convenio Marco, ...)."
+            },
+            "idOrganismoGestion": {
+                "type": ["string", "null"],
+                "title": "ID organismo (listing)",
+                "description": "The listing's internal organism id (a different id space from the comprador filter's idOrganismoLey12510)."
+            },
+            "objetoCompleto": {
+                "type": ["string", "null"],
+                "title": "Objeto completo",
+                "description": "Full subject text from the listing."
+            },
+            "destinos": {
+                "type": ["string", "null"],
+                "title": "Destinos",
+                "description": "Delivery / recipient organism text (ET and CO rows only)."
+            },
+            "fechaHoraAperturaFija": {
+                "type": ["string", "null"],
+                "title": "Fecha y hora de apertura (raw)",
+                "description": "Opening timestamp as the API prints it, YYYY-MM-DD HH:mm:ss Santa Fe time."
+            },
+            "openingAt": {
+                "type": ["string", "null"],
+                "title": "Opening at",
+                "description": "Bid opening instant, UTC ISO-8601 (Santa Fe is UTC-3)."
+            },
+            "openingDate": {
+                "type": ["string", "null"],
+                "title": "Opening date",
+                "description": "YYYY-MM-DD, Santa Fe calendar."
+            },
+            "daysUntilOpening": {
+                "type": ["integer", "null"],
+                "title": "Days until opening",
+                "description": "Negative once the opening has passed."
+            },
+            "isOpeningInFuture": {
+                "type": ["boolean", "null"],
+                "title": "Opening in future"
+            },
+            "valorPliegoAmount": {
+                "type": ["number", "null"],
+                "title": "Valor del pliego (amount)",
+                "description": "Numeric price of the bid documents when one is quoted."
+            },
+            "valorPliegoCurrency": {
+                "type": ["string", "null"],
+                "title": "Valor del pliego (currency)",
+                "description": "ARS or USD."
+            },
+            "valorPliegoIsFree": {
+                "type": ["boolean", "null"],
+                "title": "Pliego is free",
+                "description": "true for 'NO APLICA' / 'SIN COSTO' / '$ 0'; false when a price is quoted; null when undecidable."
+            },
+            "previousEstado": {
+                "type": ["string", "null"],
+                "title": "Previous estado",
+                "description": "For STATUS_CHANGE: the estado the process was last delivered in."
+            },
+            "isElectronic": {
                 "type": "boolean",
-                "description": "true if not seen in a prior run (delta mode)"
+                "title": "Electronic procedure",
+                "description": "true when the expediente matches the pattern the site uses to show its 'Ofertar' button (bids via gestionvirtual.santafe.gob.ar)."
             },
-            "source_url": { "title": "Source URL", "type": "string" }
+            "bidUrl": {
+                "type": ["string", "null"],
+                "title": "Bid URL",
+                "description": "gestionvirtual.santafe.gob.ar bid form for electronic procedures."
+            },
+            "printPdfUrl": {
+                "type": "string",
+                "title": "Print PDF URL",
+                "description": "Print-ready PDF of the whole record (output.php?a=gestiones.ver&print=1)."
+            },
+            "documentsUrl": {
+                "type": "string",
+                "title": "Documents URL",
+                "description": "Documents-only view of the record (solodocs=1)."
+            },
+            "detailFetched": {
+                "type": "boolean",
+                "title": "Detail fetched",
+                "description": "true when the detail page was read and parsed (charged as 'result'); false for listing-only records ('result-summary')."
+            },
+            "detailError": {
+                "type": ["string", "null"],
+                "title": "Detail error",
+                "description": "UNPUBLISHED when the site says the process does not exist / is not published yet; otherwise null."
+            },
+            "estadoLabel": {
+                "type": ["string", "null"],
+                "title": "Estado (detail label)",
+                "description": "The detail page's own Estado text, e.g. 'PARA APERTURA', 'EN TRÁMITE - Análisis de ofertas', 'CONCLUIDA'."
+            },
+            "estadoStage": {
+                "type": ["string", "null"],
+                "title": "Estado stage",
+                "description": "Evaluation stage suffix of the estado label, when present."
+            },
+            "estadoFromDetail": {
+                "type": ["string", "null"],
+                "title": "Estado (detail code)",
+                "description": "AP / ET / CO derived from estadoLabel."
+            },
+            "publishedAtLocal": {
+                "type": ["string", "null"],
+                "title": "Fecha de publicación (raw)",
+                "description": "'DD-MM-YYYY HH:mm Hs.' as printed."
+            },
+            "publishedAt": {
+                "type": ["string", "null"],
+                "title": "Published at",
+                "description": "Publication instant, UTC ISO-8601 - the only true publication timestamp on the register (never changes, even when documents are added later)."
+            },
+            "publishedDate": {
+                "type": ["string", "null"],
+                "title": "Published date",
+                "description": "YYYY-MM-DD, Santa Fe calendar."
+            },
+            "daysSincePublished": {
+                "type": ["integer", "null"],
+                "title": "Days since published"
+            },
+            "modalidad": {
+                "type": ["string", "null"],
+                "title": "Modalidad (detail)"
+            },
+            "alcance": {
+                "type": ["string", "null"],
+                "title": "Alcance",
+                "description": "Scope, e.g. NACIONAL."
+            },
+            "descripcion": {
+                "type": ["string", "null"],
+                "title": "Descripción",
+                "description": "Full description."
+            },
+            "rubros": {
+                "type": "array",
+                "title": "Rubros",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rubro": {
+                            "type": ["string", "null"]
+                        },
+                        "subrubro": {
+                            "type": ["string", "null"]
+                        },
+                        "raw": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "description": "Category / sub-category pairs ('RUBRO / SUBRUBRO' split)."
+            },
+            "rubroNames": {
+                "type": "array",
+                "title": "Rubro names",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "subrubroNames": {
+                "type": "array",
+                "title": "Subrubro names",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "organismoComitente": {
+                "type": "array",
+                "title": "Organismo comitente",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Requesting body / bodies the purchase is for."
+            },
+            "organismoLicitante": {
+                "type": ["string", "null"],
+                "title": "Organismo licitante",
+                "description": "Organism running the procedure (detail page)."
+            },
+            "submissionPlace": {
+                "type": ["string", "null"],
+                "title": "Lugar de presentación de ofertas",
+                "description": "Where / how offers are submitted (often an e-mail or the gestionvirtual link)."
+            },
+            "submissionDeadlineLocal": {
+                "type": ["string", "null"],
+                "title": "Fecha límite de presentación (raw)"
+            },
+            "submissionDeadline": {
+                "type": ["string", "null"],
+                "title": "Submission deadline",
+                "description": "Offer submission deadline, UTC ISO-8601 - distinct from the opening; the date suppliers schedule against."
+            },
+            "daysUntilDeadline": {
+                "type": ["integer", "null"],
+                "title": "Days until deadline"
+            },
+            "openingPlace": {
+                "type": ["string", "null"],
+                "title": "Lugar de apertura"
+            },
+            "openingAtDetailLocal": {
+                "type": ["string", "null"],
+                "title": "Fecha de apertura (detail, raw)"
+            },
+            "openingNote": {
+                "type": ["string", "null"],
+                "title": "Opening note",
+                "description": "Text after the opening date on the detail page, e.g. '(*** NUEVA FECHA ***)'."
+            },
+            "deliveryPlaceAndDate": {
+                "type": ["string", "null"],
+                "title": "Lugar y fecha de entrega"
+            },
+            "contactInfo": {
+                "type": ["string", "null"],
+                "title": "Contacto para información",
+                "description": "Institutional contact text as published (phone / e-mail)."
+            },
+            "contactEmails": {
+                "type": "array",
+                "title": "Contact e-mails",
+                "items": {
+                    "type": "string"
+                },
+                "description": "E-mail addresses found in the contact and submission fields, lower-cased."
+            },
+            "contactPhones": {
+                "type": "array",
+                "title": "Contact phones",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "valorPliegoDetail": {
+                "type": ["string", "null"],
+                "title": "Valor del pliego (detail)"
+            },
+            "montoOriginalText": {
+                "type": ["string", "null"],
+                "title": "Monto Original (raw)",
+                "description": "Budget / estimated value as printed, e.g. '$ 207.302.040,00' or 'U$S 60.000,00'."
+            },
+            "montoOriginalAmount": {
+                "type": ["number", "null"],
+                "title": "Monto Original (amount)",
+                "description": "Numeric budget. Under Argentine inflation compare with publishedDate; never converted."
+            },
+            "montoOriginalCurrency": {
+                "type": ["string", "null"],
+                "title": "Monto Original (currency)",
+                "description": "ARS or USD."
+            },
+            "expedientes": {
+                "type": "array",
+                "title": "Expedientes",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {
+                            "type": "string"
+                        },
+                        "code": {
+                            "type": "string"
+                        },
+                        "url": {
+                            "type": ["string", "null"]
+                        }
+                    }
+                },
+                "description": "File numbers from the detail page with the tracker link (expedientes-web / SIE)."
+            },
+            "expediente": {
+                "type": ["string", "null"],
+                "title": "Expediente",
+                "description": "First expediente code from the detail page (the listing's numeroExpediente is often blank)."
+            },
+            "expedienteUrl": {
+                "type": ["string", "null"],
+                "title": "Expediente URL",
+                "description": "Link to the province's file tracker."
+            },
+            "notes": {
+                "type": "array",
+                "title": "Notes",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Free-form 'IMPORTANTE' blocks some buyers add to the page."
+            },
+            "documents": {
+                "type": "array",
+                "title": "Documents",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string"
+                        },
+                        "tipo": {
+                            "type": "string"
+                        },
+                        "nombre": {
+                            "type": "string"
+                        },
+                        "url": {
+                            "type": "string"
+                        },
+                        "id": {
+                            "type": ["string", "null"]
+                        }
+                    }
+                },
+                "description": "Every attachment with a normalised kind: pliego, circular, llamado, acta_apertura, nomina_oferentes, cuadro_comparativo, informe_comision, preadjudicacion, adjudicacion, orden_provision, documento_provision, planimetria, otros."
+            },
+            "documentCount": {
+                "type": "integer",
+                "title": "Document count"
+            },
+            "documentKinds": {
+                "type": "array",
+                "title": "Document kinds",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "hasPliego": {
+                "type": "boolean",
+                "title": "Has pliego"
+            },
+            "hasCircular": {
+                "type": "boolean",
+                "title": "Has circular",
+                "description": "A circular aclaratoria/modificatoria was published - the pliego changed."
+            },
+            "hasActaApertura": {
+                "type": "boolean",
+                "title": "Has acta de apertura",
+                "description": "Offers were opened."
+            },
+            "hasPreadjudicacion": {
+                "type": "boolean",
+                "title": "Has preadjudicación",
+                "description": "A pre-award report exists."
+            },
+            "hasAdjudicacion": {
+                "type": "boolean",
+                "title": "Has adjudicación",
+                "description": "A 'Norma Legal de Adjudicación' (award decision) was published."
+            },
+            "hasOrdenProvision": {
+                "type": "boolean",
+                "title": "Has orden de provisión",
+                "description": "A purchase order was issued."
+            },
+            "hasCuadroComparativo": {
+                "type": "boolean",
+                "title": "Has cuadro comparativo",
+                "description": "A price comparison table was published."
+            },
+            "contentHash": {
+                "type": ["string", "null"],
+                "title": "Content hash",
+                "description": "SHA-1 fingerprint of the detail page's data and documents - the delta engine's change key (null for listing-only records)."
+            }
         }
     },
     "views": {
         "overview": {
             "title": "Overview",
+            "description": "Newest activity first: what is being tendered, by whom, budget, opening.",
             "transformation": {
-                "fields": ["idGestion", "tipoGestion", "comprador", "objeto", "fechaHoraApertura", "estado"]
+                "fields": [
+                    "event_type",
+                    "estado",
+                    "numeroAnio",
+                    "tipoGestion",
+                    "objeto",
+                    "comprador",
+                    "montoOriginalAmount",
+                    "montoOriginalCurrency",
+                    "openingDate",
+                    "publishedDate",
+                    "source_url"
+                ]
             },
             "display": {
                 "component": "table",
-                "columns": [
-                    { "label": "ID", "format": "text", "field": "idGestion" },
-                    { "label": "Tipo", "format": "text", "field": "tipoGestion" },
-                    { "label": "Comprador", "format": "text", "field": "comprador" },
-                    { "label": "Objeto", "format": "text", "field": "objeto" },
-                    { "label": "Apertura", "format": "text", "field": "fechaHoraApertura" },
-                    { "label": "Estado", "format": "text", "field": "estado" }
+                "properties": {
+                    "event_type": {
+                        "label": "Event",
+                        "format": "text"
+                    },
+                    "estado": {
+                        "label": "Estado",
+                        "format": "text"
+                    },
+                    "numeroAnio": {
+                        "label": "Nº",
+                        "format": "text"
+                    },
+                    "tipoGestion": {
+                        "label": "Tipo",
+                        "format": "text"
+                    },
+                    "objeto": {
+                        "label": "Objeto",
+                        "format": "text"
+                    },
+                    "comprador": {
+                        "label": "Comprador",
+                        "format": "text"
+                    },
+                    "montoOriginalAmount": {
+                        "label": "Monto",
+                        "format": "number"
+                    },
+                    "montoOriginalCurrency": {
+                        "label": "Cur.",
+                        "format": "text"
+                    },
+                    "openingDate": {
+                        "label": "Apertura",
+                        "format": "date"
+                    },
+                    "publishedDate": {
+                        "label": "Publicado",
+                        "format": "date"
+                    },
+                    "source_url": {
+                        "label": "Record",
+                        "format": "link"
+                    }
+                }
+            }
+        },
+        "deadlines": {
+            "title": "Deadlines & openings",
+            "description": "Bid calendar: submission deadline, opening date, days left, electronic bid link.",
+            "transformation": {
+                "fields": [
+                    "numeroAnio",
+                    "objeto",
+                    "comprador",
+                    "submissionDeadline",
+                    "daysUntilDeadline",
+                    "openingAt",
+                    "daysUntilOpening",
+                    "isOpeningInFuture",
+                    "openingPlace",
+                    "isElectronic",
+                    "bidUrl",
+                    "printPdfUrl"
                 ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "numeroAnio": {
+                        "label": "Nº",
+                        "format": "text"
+                    },
+                    "objeto": {
+                        "label": "Objeto",
+                        "format": "text"
+                    },
+                    "comprador": {
+                        "label": "Comprador",
+                        "format": "text"
+                    },
+                    "submissionDeadline": {
+                        "label": "Deadline",
+                        "format": "date"
+                    },
+                    "daysUntilDeadline": {
+                        "label": "Days left",
+                        "format": "number"
+                    },
+                    "openingAt": {
+                        "label": "Opening",
+                        "format": "date"
+                    },
+                    "daysUntilOpening": {
+                        "label": "Days to opening",
+                        "format": "number"
+                    },
+                    "isOpeningInFuture": {
+                        "label": "Upcoming",
+                        "format": "boolean"
+                    },
+                    "openingPlace": {
+                        "label": "Where",
+                        "format": "text"
+                    },
+                    "isElectronic": {
+                        "label": "Electronic",
+                        "format": "boolean"
+                    },
+                    "bidUrl": {
+                        "label": "Bid",
+                        "format": "link"
+                    },
+                    "printPdfUrl": {
+                        "label": "PDF",
+                        "format": "link"
+                    }
+                }
+            }
+        },
+        "documents": {
+            "title": "Documents & awards",
+            "description": "Which stage each process reached: pliego, circulares, acta, preadjudicación, adjudicación, orden de provisión.",
+            "transformation": {
+                "fields": [
+                    "numeroAnio",
+                    "estadoLabel",
+                    "objeto",
+                    "documentCount",
+                    "hasPliego",
+                    "hasCircular",
+                    "hasActaApertura",
+                    "hasCuadroComparativo",
+                    "hasPreadjudicacion",
+                    "hasAdjudicacion",
+                    "hasOrdenProvision",
+                    "documentsUrl"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "numeroAnio": {
+                        "label": "Nº",
+                        "format": "text"
+                    },
+                    "estadoLabel": {
+                        "label": "Estado",
+                        "format": "text"
+                    },
+                    "objeto": {
+                        "label": "Objeto",
+                        "format": "text"
+                    },
+                    "documentCount": {
+                        "label": "Docs",
+                        "format": "number"
+                    },
+                    "hasPliego": {
+                        "label": "Pliego",
+                        "format": "boolean"
+                    },
+                    "hasCircular": {
+                        "label": "Circular",
+                        "format": "boolean"
+                    },
+                    "hasActaApertura": {
+                        "label": "Acta",
+                        "format": "boolean"
+                    },
+                    "hasCuadroComparativo": {
+                        "label": "Cuadro comp.",
+                        "format": "boolean"
+                    },
+                    "hasPreadjudicacion": {
+                        "label": "Preadj.",
+                        "format": "boolean"
+                    },
+                    "hasAdjudicacion": {
+                        "label": "Adjudicación",
+                        "format": "boolean"
+                    },
+                    "hasOrdenProvision": {
+                        "label": "Orden prov.",
+                        "format": "boolean"
+                    },
+                    "documentsUrl": {
+                        "label": "Documents",
+                        "format": "link"
+                    }
+                }
+            }
+        },
+        "buyers": {
+            "title": "Buyers & contacts",
+            "description": "Who is buying, for whom, in which rubros, and how to reach the procurement office.",
+            "transformation": {
+                "fields": [
+                    "comprador",
+                    "organismoComitente",
+                    "rubroNames",
+                    "subrubroNames",
+                    "contactEmails",
+                    "contactPhones",
+                    "submissionPlace",
+                    "expediente",
+                    "expedienteUrl",
+                    "idGestion"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "comprador": {
+                        "label": "Comprador",
+                        "format": "text"
+                    },
+                    "organismoComitente": {
+                        "label": "Comitente",
+                        "format": "text"
+                    },
+                    "rubroNames": {
+                        "label": "Rubros",
+                        "format": "text"
+                    },
+                    "subrubroNames": {
+                        "label": "Subrubros",
+                        "format": "text"
+                    },
+                    "contactEmails": {
+                        "label": "E-mails",
+                        "format": "text"
+                    },
+                    "contactPhones": {
+                        "label": "Phones",
+                        "format": "text"
+                    },
+                    "submissionPlace": {
+                        "label": "Submission",
+                        "format": "text"
+                    },
+                    "expediente": {
+                        "label": "Expediente",
+                        "format": "text"
+                    },
+                    "expedienteUrl": {
+                        "label": "Tracker",
+                        "format": "link"
+                    },
+                    "idGestion": {
+                        "label": "ID",
+                        "format": "text"
+                    }
+                }
+            }
+        },
+        "changes": {
+            "title": "Status changes & amendments",
+            "description": "Delta events: transitions between estados and amended detail pages.",
+            "transformation": {
+                "fields": [
+                    "event_type",
+                    "previousEstado",
+                    "estado",
+                    "estadoLabel",
+                    "numeroAnio",
+                    "objeto",
+                    "hasCircular",
+                    "hasActaApertura",
+                    "hasPreadjudicacion",
+                    "openingNote",
+                    "scraped_at",
+                    "source_url"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "event_type": {
+                        "label": "Event",
+                        "format": "text"
+                    },
+                    "previousEstado": {
+                        "label": "From",
+                        "format": "text"
+                    },
+                    "estado": {
+                        "label": "To",
+                        "format": "text"
+                    },
+                    "estadoLabel": {
+                        "label": "Estado label",
+                        "format": "text"
+                    },
+                    "numeroAnio": {
+                        "label": "Nº",
+                        "format": "text"
+                    },
+                    "objeto": {
+                        "label": "Objeto",
+                        "format": "text"
+                    },
+                    "hasCircular": {
+                        "label": "Circular",
+                        "format": "boolean"
+                    },
+                    "hasActaApertura": {
+                        "label": "Acta",
+                        "format": "boolean"
+                    },
+                    "hasPreadjudicacion": {
+                        "label": "Preadj.",
+                        "format": "boolean"
+                    },
+                    "openingNote": {
+                        "label": "Opening note",
+                        "format": "text"
+                    },
+                    "scraped_at": {
+                        "label": "Observed",
+                        "format": "date"
+                    },
+                    "source_url": {
+                        "label": "Record",
+                        "format": "link"
+                    }
+                }
             }
         }
     }

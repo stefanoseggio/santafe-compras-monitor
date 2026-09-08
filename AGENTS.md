@@ -1,231 +1,248 @@
-# AGENTS.md - Santa Fe Compras Monitor
+# AGENTS.md - Santa Fe Tenders Scraper & Monitor
 
-Technical notes for whoever (human or AI) touches this actor next.
+Technical notes for whoever (human or AI) touches this actor next. Everything
+below was verified live against santafe.gov.ar on 2026-09-08 unless stated.
 
 ## What this actor does
 
-Extracts public tenders (licitaciones, contrataciones) from the Province
-of Santa Fe, Argentina's official procurement system, with full detail per
-process - description, rubros, organism, and direct document links
-(pliego, resolucion, acta de apertura, etc).
+Extracts the Province of Santa Fe's **Gestiones de Compra** procurement
+register - listing rows from the site's own read-only JSON endpoint plus one
+server-rendered detail page per process - with the site's search filters
+applied server-side, and a delta engine keyed on `idGestion` (identity and
+ordering) plus a per-record fingerprint of the detail page (change
+detection), so new processes, estado transitions and amended documents are
+all reported.
+
+## Site facts that shape the design
+
+### Access
+
+- No User-Agent, cookie, proxy or JS needed (a bare request with an empty
+  UA gets HTTP 200). A browser UA is sent anyway. Apache with HSTS/CSP only,
+  no WAF. `robots.txt` -> 404 on `www.santafe.gov.ar` and `www.santafe.gob.ar`.
+- Rate tolerance: 10 concurrent detail GETs -> 10/10 200 in ~0.1-0.3 s each;
+  `maxConcurrency` is capped at 10, default 5. Never request
+  `gestion.php?...&contar=1` (the site's own buttons add it; it increments a
+  view counter).
+
+### Listing: `site/AppAjax.php?a=consultas.getContrataciones`
+
+Response `{success, errors:{reason}, data:[...], type, totalRecords:"N",
+extraData:{apTotal, etTotal, coTotal}}`. `totalRecords` = rows in THIS
+estado; `extraData` = counts for all three estados under the current filter
+set (both exposed in the run summary). Past the end -> `success:true,
+data:[]`. Omitting `estado` returns everything (31,214) with extraData
+zeros; an invalid estado silently falls back to AP - the actor always sends
+one of AP/ET/CO. Invalid `sort` -> HTTP 500 with an EMPTY body (retried as
+5xx, then the run fails - correct for a site change).
+
+Row keys: `idGestion, tipoGestion, fechaHoraApertura (DD-MM-YYYY),
+numeroAño, numeroGestion, anioGestion, valorPliego (free text), objeto,
+objetoCompleto, idOrganismoGestion, comprador, tipoModalidad,
+numeroExpediente (often blank), fechaHoraAperturaFija (YYYY-MM-DD HH:mm:ss,
+Santa Fe time)` + `destinos` on ET/CO rows only. The listing has NO
+publication or last-modified field.
+
+Server-side parameters (all live-verified with counts; totals AP 78 /
+ET 2,214 / CO 28,921 that day):
+
+| param             | example                     | notes                                                                                                                                                                                  |
+| ----------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `estado`          | `AP` / `ET` / `CO`          | one per query                                                                                                                                                                          |
+| `anio`            | `2025`                      | AP 0 / ET 708 / CO 2,631. The site's UI always sends the current year; the actor sends it only when set                                                                                |
+| `objeto`          | `limpieza`                  | case-insensitive phrase; word order matters (`limpieza servicio` -> 1)                                                                                                                 |
+| `tipoGestion`     | `L`                         | ONE letter code; `L,P` is ignored (returns all) -> the actor runs one query per selected code. Lower-case `l` is ignored too -> upper-cased in input.ts                                |
+| `tipoModalidad`   | `2`                         | Convenio Marco: CO 117 / ET 4                                                                                                                                                          |
+| `comprador`       | `27`                        | idOrganismoLey12510 from `shared.getOrganismosLey` (211 entries); NOT the row's `idOrganismoGestion` (different id space: 449 vs 27 for the same body). A name -> 0 rows               |
+| `solicitante`     | `27`                        | same id space (organismo comitente)                                                                                                                                                    |
+| `idEspecie`       | `57`                        | rubro from `shared.getEspeciesPrincipales` (78 entries)                                                                                                                                |
+| `idFamilia`       | `226` (with `idEspecie=57`) | sub-rubro. The site's own select is named `form-select` and does NOTHING (57+form-select=367 -> still 12); the backend honours `idFamilia` (57+226 -> 4, 57+367 -> 6). Needs idEspecie |
+| `nroGestion`      | `02`                        | exact string match on numeroGestion                                                                                                                                                    |
+| `nroExpediente`   | `EE-2026-00001797-APPSF-OD` | exact full match only                                                                                                                                                                  |
+| `sort` + `dir`    | `idGestion` + `DESC`        | accepted: idGestion, fechaHoraApertura, tipoGestion, objeto, comprador, consultada. `fechaHoraApertura ASC` on CO starts with epoch rows (1969-12-31)                                  |
+| `start` + `limit` | `0` + `2000`                | limit honoured up to at least 6,000 (2,000 rows 2.9 s / 1.3 MB; 5,000 rows 5.0 s / 3.2 MB)                                                                                             |
+
+There is no date filter of any kind (`fechaDesde`/`fechaHasta` are ignored).
+
+### Ordering: `idGestion DESC` is the only recency signal
+
+Default (no sort) AP is ascending by opening date; ET/CO have no ORDER BY.
+`sort=idGestion&dir=DESC` gives newest-created first and paginates
+contiguously (page 1 138923..136861, page 2 136857..135432, strictly
+descending, no overlap). `idGestion` is allocated at creation and only
+approximately follows publication (139028 published after 139030; drafts
+can be published days after their id was allocated), hence the 500-id
+watermark margin and the 2-known-pages rule. A record's `idGestion` and
+`Fecha de Publicación` NEVER change: 138676 gained a CIRCULAR ACLARATORIA
+and 126068 gained an acta + preadjudicación with the original date and id.
+So amendments are invisible in the listing - only the detail page tells.
+
+### Detail: `site/gestion.php?idGestion=N`
+
+Flat sequence of `<div class="col-12 mb-4">` blocks: `<b>Label:</b><span>`
+for single values; `<div>` children for Rubros / Subrubros, Organismo
+comitente and Expedientes (the code is wrapped in a link to
+`expedientes-web/expediente-timbo/?...` for electronic files or
+`index.php/apps/sie?...` for legacy ones); `<h4>Documentos</h4>` +
+`<h5>Tipo</h5>` headers + `<div><a href="./../descargar.php?m=anexo&id=..&hash=..&panel=0" title>`.
+Some buyers append free-form blocks with a malformed `<b> IMPORTANTE <b>
+<span>` label (139031) - parsed into `notes[]`, never crash. Zero-width
+spaces occur in pasted text and are stripped.
+
+Labels seen in a 120-page sample (all pages): Fecha de Publicación,
+Modalidad, Estado, Alcance, Objeto de la gestión, Rubros / Subrubros,
+Organismo comitente, Organismo licitante, Fecha y hora de apertura de
+ofertas, Valor del pliego, Monto Original; most pages: Lugar de
+presentación de ofertas, Fecha y hora límite de presentación de ofertas,
+Descripción, Lugar de apertura de ofertas, Lugar y fecha de entrega;
+72/120 Expedientes; 14/120 Contacto para información. Labels are matched
+accent- and case-insensitively (`fold()`).
+
+- Estado label: `PARA APERTURA` | `EN TRÁMITE` | `CONCLUIDA`, sometimes with
+  a stage suffix (`EN TRÁMITE - Análisis de ofertas - Control de
+documentación`) -> `estadoStage`.
+- `Fecha y hora de apertura de ofertas` is `DD-MM-YYYY HH:mm Hs. - <note>`;
+  the note is usually empty, sometimes `(*** NUEVA FECHA ***)`.
+- `Monto Original` is `$  207.302.040,00` (ARS) or `U$S 60.000,00` (USD -
+  5/120). Thousands `.`, decimals `,`; old rows use `$  480.-` / `$  7.00`.
+- Document `<h5>` vocabulary (120 pages): Pliego 94, Otros 49, Orden de
+  Provisión 47, Cuadro Comparativo de Precios 43, Acta de Apertura 35,
+  Informe de Preadjudicación 32, Norma Legal de Adjudicación 29, Llamado a
+  Licitación 10, Circulares 4, Informe de Comisión 3, Documento de Provisión
+  2, Nómina de Oferentes 1, Planimetría 1 -> `DocumentKind` in
+  `parsers/detail.ts`. Document URLs are stable (id + hash); HEAD returns
+  `Content-Disposition: attachment; filename="..."`, no Last-Modified.
+- Nonexistent / unpublished id -> HTTP 200 with "La gestión no existe o no
+  está publicada aún" and no blocks -> `exists:false` -> `UNPUBLISHED`.
+- Print PDF: `site/output.php?a=gestiones.ver&idGestion=N&print=1`; docs-only
+  view `gestion.php?idGestion=N&solodocs=1`; electronic bids:
+  `https://gestionvirtual.santafe.gob.ar/#/bandeja_proveedores/create/form/680a87a12a055d2295ea39a0?expedienteCode=<numeroExpediente>`
+  when the expediente matches `/^[A-Za-z]{1,6}-\d{1,4}-\d{1,8}-APPSF-[A-Za-z]{1,2}(#[A-Za-z]{1,6})*/`
+  (the site's own `puedeOfertar` rule, copied from its index.js).
+
+### Timezone
+
+Argentina: fixed UTC-3, no DST since 2009. `normalize.ts` uses a constant
+offset (no Intl). Site timestamps were consistent with UTC-3 live.
 
 ## Architecture
 
-The simplest of this portfolio's actors so far, for a real reason: the
-site's own search page (`gestionesdecompras/site/index.php`) drives a
-read-only JSON API (`AppAjax.php?a=consultas.getContrataciones`) via plain
-query-string GET requests - no ViewState, no postback, no session state,
-no proxy needed (verified live: reachable from a plain datacenter IP).
+- `src/input.ts` - validates and resolves the input into `ListingFilters` +
+  `queries` (one per estado x tipoGestion) + `RunOptions`; resolves organism
+  / rubro / sub-rubro names through `src/lookups.ts` (the site's combo
+  endpoints, injected for tests); computes the filter fingerprint that names
+  the delta store; handles relative dates (`7 days` back, `+7 days` forward)
+  and the legacy `dateRange`.
+- `src/urls.ts` - `listingPath()`, detail / print / docs / bid URLs, the
+  tipoGestion and modalidad code tables.
+- `src/http.ts` - `fetch` with timeout, retry policy (network/408/425/429/5xx
+  only), `fetchOptional` (404 -> null), `mapWithConcurrency`.
+- `src/parsers/listing.ts` - `parseListingResponse()`: JSON shape validation
+  (success + data[] + extraData + numeric idGestion per row) -> rows, totals,
+  is-it-a-listing-at-all. `src/parsers/detail.ts` - `parseDetailPage()`
+  (structured) and `parseDetail()` (v1 `detail` object).
+- `src/fetchGestiones.ts` - `walkListing()` (pagination + classification +
+  stop rules + recheck selection, no detail fetches), `enrichBatch()`
+  (detail fetches with bounded concurrency), `buildRecord()` (all
+  normalisation), `fingerprintOf()` (change key).
+- `src/state.ts` - named-store delta state v2 (`seen: {idGestion:
+"ESTADO|hash"}`, numeric `watermark`, `backlogFloor`, `baselineFloor`,
+  `filtersSignature`), prune lowest ids first at 50k.
+- `src/main.ts` - orchestration: walk -> deliver candidates oldest-first ->
+  re-check known open records -> status sweep of vanished open records ->
+  persist -> summary. Never pushes anything but records; fails the run on
+  error (`Actor.fail`), so alerts fire.
 
-- `src/fetchListing.ts` - pages through the JSON API per `estado` code
-  (`AP`=Apertura Proxima, `ET`=En Tramite, `CO`=Concluido - verified live
-  against the response's own `extraData.{ap,et,co}Total` breakdown).
-  `anio` was tested as a filter parameter and doesn't appear to change
-  results in any observable way, so it's deliberately omitted rather than
-  implying a filter that doesn't work.
-- `src/fetchDetail.ts` + `src/parsers/detail.ts` - fetches and parses each
-  process's detail page (plain server-rendered HTML, no JS). The page is a
-  flat sequence of `<div class="col-12 mb-4">` blocks: most are
-  `<b>Label:</b><span>Value</span>` pairs, a few (Rubros / Subrubros,
-  Organismo comitente) use one or more bare `<div>` for potentially
-  multiple values, and a distinct block holds `<h4>Documentos</h4>` +
-  `<h5>Tipo</h5>` headers each followed by `<div><a></a></div>` document
-  links. `parseDetail` handles all three shapes.
-- `src/http.ts` - shared fetch-with-retry helper, native `fetch()`, no
-  proxy, exponential backoff for transient failures only.
-- `src/main.ts` - for each selected `estado`, lists then (optionally, on
-  by default) fetches full detail per process, pushes + charges per item.
-- `src/state.ts` - the delta-engine's named key-value store (see below).
-- `src/dateFilter.ts` - `dateRange` parsing/window logic (see below).
+## Delta engine invariants (do not break these)
 
-## Delta engine (2026-09-06 retrofit)
+1. **State is written only for delivered records** (`markSeen` after a
+   successful `pushData`, with the estado list and the detail fingerprint),
+   plus, at the END of a successful run, for rows walked but intentionally
+   excluded as `baseline` or `eventType`. Rows excluded by the opening
+   window are NOT remembered (they must surface when they enter the
+   window). `saveState` runs every 50 delivered records, in a `finally`, and
+   on the platform `migrating` / `aborting` events.
+2. **Delivery is oldest-first** (lowest idGestion first) within a run, so a
+   crash leaves the NEWEST candidates undelivered - exactly the rows the
+   next walk visits first. The dataset is an append-only chronological log;
+   the views and README tell users to read it with `desc=true`.
+3. **Walk**: one query per estado (x tipoGestion), `sort=idGestion&dir=DESC`,
+   `limit=2000`; end of list = `start + rows >= totalRecords` or an empty
+   page. In delta mode a page counts as "known" when it has no new /
+   status-changed rows (baseline and window exclusions do not count as
+   changes); 2 consecutive known pages stop the query, as does a page whose
+   ids are all below `min(watermark, backlogFloor) - 500`. Full mode never
+   stops early. Ids are de-duplicated across pages and queries.
+4. **Classification**: unseen id -> `NEW_LISTING`; seen under another
+   estado -> `STATUS_CHANGE`; seen under the same estado -> unchanged in the
+   listing, and (delta + fetchDetail + UPDATED wanted + opening within
+   `recheckWindowDays` or in the future) queued for a detail re-read. A
+   re-read whose fingerprint differs from the stored one is delivered as
+   `UPDATED`; a stored fingerprint of `""` (listing-only delivery, baseline
+   exclusion) is filled in silently, never reported as an update. Re-reads
+   are capped at 1,000 per run (newest first).
+5. **Status sweep**: after delivery, for each of AP / ET that was selected
+   AND walked to its end this run, every remembered id under that estado
+   that was not met on any page is probed on its detail page (cap 300 per
+   run): a different estado -> `STATUS_CHANGE` built from the detail page
+   alone (`item: null`, listing-only fields null); "no existe" -> forgotten
+   (it comes back as new if republished); same estado -> left alone.
+   Requires fetchDetail and STATUS_CHANGE in eventTypes.
+6. A COLD delta run (no seen entries, no lastRunAt) cut short by `maxItems`
+   defines the **baseline**: `state.baselineFloor` = idGestion of the oldest
+   row it delivered. On later runs an unseen row with id <= floor is
+   excluded as `'baseline'` (history), does not count as a change for the
+   early-stop, and is marked seen at the end (hash `""`) so a later status
+   change or amendment can still surface. Only `resetState` clears it.
+   A NON-cold run cut short by `maxItems` never marks the overflow as seen;
+   it logs a warning AND records a **backlog floor** (`state.backlogFloor` =
+   idGestion of the oldest row the truncated walk reached). While the floor
+   is set, pages at or above it never count towards the early-stop and the
+   watermark cutoff is moved below the floor, so the next run walks through
+   the delivered block down to the rows it never reached. A walk that ends
+   naturally clears the floor.
+7. **Detail failures**: an `UNPUBLISHED` page (200 "no existe" or 404) is
+   delivered as a summary record and marked seen with hash `""`; a transient
+   failure (network / 5xx after retries) is NOT delivered and NOT marked
+   seen (retried next run); if every detail page of a run fails while the
+   listing worked, the run fails.
+8. The delta store name defaults to `auto-<hash of filters>` (opening window,
+   maxItems, fetchDetail, sortBy and recheckWindowDays excluded from the
+   hash). The v1 store `santafe-compras-monitor-delta-state` is never
+   adopted (it was written before delivery and regardless of filters).
+9. Charging: records with a parsed detail page are pushed with event
+   `result`, the rest with `result-summary`; `chargedCount` from the SDK is
+   the number actually stored in PPE mode (outside PPE everything is stored,
+   nothing charged). Re-reads and sweep probes are not charged unless they
+   produce a record.
 
-Added `onlyNew`/`dateRange` input + a standardized B2B output envelope
-(`record_id`, `event_type`, `scraped_at`, `is_new`, `source_url`) across
-this portfolio's fleet, matching the shape shipped on the UK HSE
-Enforcement Monitor actor. Santa Fe-specific implementation notes:
+## Tests
 
-### Why safe post-filter, not early-stop pagination
+- `npm test` - offline, ~1 s: live-captured fixtures (`test/fixtures`:
+  AP/ET/CO listing pages sorted newest-first, six detail pages covering AP /
+  ET with circular / CO with acta + preadjudicación / USD + notes / full
+  award document set / staged estado, the nonexistent page) + mocked HTTP;
+  two end-to-end runs of `src/main.ts` with the SDK mocked (delivery under
+  a spending limit; re-check + status sweep).
+- `npm run test:live` (`LIVE=1`) - six live checks against santafe.gov.ar
+  (~3 s): newest AP with detail, anio + tipoGestion filters, organism by
+  name, rubro + sub-rubro by name, zero-result termination, unpublished id.
+- Local end-to-end: put an input in `storage/key_value_stores/default/INPUT.json`
+  and `apify run --purge`; the delta store appears under
+  `storage/key_value_stores/santafe-compras-monitor-state-<name>/`. Use
+  `--no-purge` (or `apify run` without `--purge`) for the second, delta run
+  so the named store survives. On this Windows/Node 24 setup the CLI may
+  print a libuv assertion after the actor has already exited cleanly -
+  check the actor's own last log line.
 
-This is the one place this actor's implementation genuinely diverges from
-HSE's, and it's backed by a live check, not a guess. Before writing
-`onlyNew`, I queried the real endpoint directly (`curl`, no proxy, same as
-`src/http.ts`) for each `estado` and inspected both the id and date fields
-across consecutive pages:
+## Known scope limits (disclosed in the README)
 
-- **`estado=AP`** is sorted **strictly ascending by `fechaHoraAperturaFija`**
-  (the soonest upcoming bid opening first) - e.g. the first page returned
-  opens 2026-09-07 09:00, 09:00, 09:30, 10:00, 10:00, ... in that exact
-  order, with `idGestion` jumping around non-monotonically (138991, 138904,
-  138761, 138971, ...). This is a real, useful domain sort ("what's opening
-  soonest"), but it is the **opposite** of "newest published first": a
-  brand-new AP record with an opening date three weeks out lands near the
-  END of the list, not the front. An early-stop guard watching for "N
-  consecutive pages of already-seen ids" would falsely declare "nothing
-  new" the moment it walked past a run of near-term opening dates it
-  already knew about, even with a genuinely new far-dated record sitting
-  deeper in the list.
-- **`estado=ET`/`CO`** show **no correlation at all** between list position
-  and either `idGestion` or any date field. Sample from a live `ET` query:
-  positions 1-5 were ids `138676, 137769, 138578, 138248, 138584` with
-  opening dates `2026-08-31, 2026-05-29, 2026-08-11, 2026-07-21,
-2026-08-25` - both columns jump in both directions with no pattern.
-  Repeating the identical request ~2 seconds later returned the identical
-  order (so it's _stable_ within a session - pagination doesn't skip or
-  duplicate), but nothing about it says "recent things are near the
-  front". This reads like an un-ordered (no explicit `ORDER BY`) query
-  whose apparent stability comes from the database's own execution plan,
-  not a documented contract - exactly the kind of thing the spec says not
-  to build early-stop on without solid evidence, and there is none here.
-
-Given that, `onlyNew` in `src/fetchListing.ts` is a **safe post-filter**:
-the pagination walk is byte-for-byte the same loop that existed before
-this retrofit (same `PAGE_SIZE`, same `maxItems` break conditions, same
-per-`estado` cumulative budget) - `onlyNew`/`dateRange` are applied in a
-second pass over the fully-walked `rawEntries`, never by skipping a page.
-This costs the same number of requests as a same-size non-delta run
-(no fast path), but it cannot silently miss a new record based on a false
-assumption about ordering. Verified against the real fixture in
-`test/fetchListingDelta.test.ts`: even when every id on a page is already
-seen, `fetchWithRetryMock` is still called for that page (not skipped).
-
-### record_id / event_type choices
-
-- `record_id` = `idGestion` as a string, reused as-is (it already is a
-  string in the API response) - no hashing, matching the spec.
-- `event_type` is **always `'NEW_LISTING'`**, never a more specific value.
-  I checked whether `CO` (Concluido) could defensibly map to something
-  like HSE's `'SANCTION'` (an outcome/award signal), since the README
-  already glossed `CO` as "concluded/awarded". Live check: fetched a real
-  `CO` detail page's field list (`idGestion=126068` and two others) - there
-  is **no awardee/adjudicatario field at all**, and the page's own
-  `Estado` label reads a flat `"CONCLUIDA"` for every concluded record
-  regardless of whether it was actually awarded, deserted (no bids), or
-  revoked. Unlike a conviction record (which unambiguously IS an imposed
-  sanction), a `CO` record here does not unambiguously mean "awarded" -
-  labeling it that way would be a guess dressed up as a signal. So every
-  record gets `'NEW_LISTING'`, and this is disclosed as a known limitation
-  rather than silently picking something more specific-sounding.
-- `source_url` reuses the existing `detailUrl` value verbatim (just
-  renamed into the standardized field, per the spec's "replace, don't
-  duplicate" instruction) - `detailUrl` itself is removed from the type
-  and output.
-- `scraped_at` **replaces** `scrapedAt`, with one real behavior fix beyond
-  the rename: the old code called `new Date().toISOString()` **inside the
-  per-record push loop**, so records from the same run could get
-  microseconds-apart-but-different timestamps depending on how long detail
-  fetches took. `scraped_at` is now computed once in `main.ts` before the
-  loop and reused for every record, matching the spec's "same value for
-  every record from one run" and this portfolio's own HSE precedent.
-
-### State persistence
-
-`src/state.ts` opens a **named** key-value store
-(`santafe-compras-monitor-delta-state`) rather than the run's default one -
-Apify's default KV store is isolated per run and would not survive between
-scheduled runs, which defeats the whole point of a delta. State is keyed
-per **`estado`** (`AP`/`ET`/`CO`), not flattened into one global id list:
-the same `idGestion` legitimately moves through `AP` -> `ET` -> `CO` over
-its real lifecycle (a tender opens, then is "in progress", then
-concludes), and each transition is a genuinely new appearance in that
-estado's own list worth re-flagging as `is_new` there - the same reasoning
-HSE applied to keep convictions/notices id spaces independent. Each
-estado's seen-id list is capped at 3000 entries; since this source's order
-isn't a recency signal (see above), the cap keeps "this run's walked ids
-first" as a best-effort retention rule, not a guaranteed "keep the
-newest" one - a real, disclosed difference from HSE's cap (which can
-honestly claim "newest ids first" because its source is verified
-newest-first).
-
-### dateRange
-
-`fechaHoraApertura`/`fechaHoraAperturaFija` (the bid opening date, present
-on every listing item regardless of `fetchDetail`) is the natural date
-field used for `dateRange`, via `src/dateFilter.ts`'s `parseSantaFeDate`
-(format `"YYYY-MM-DD HH:mm:ss"`, verified against real API responses).
-Two real gotchas here, both different from HSE's date handling:
-
-1. **It's a future date for `AP`, not a past one.** HSE's Offence/served
-   dates are always historical, so `now - date <= window` ("happened in
-   the last N") is the right check. Santa Fe's opening date can be weeks
-   in the _future_ for `AP` - a one-directional past-only check would make
-   every single `AP` record trivially pass every `dateRange` preset (a
-   negative difference is always <= a positive window), which is a
-   silently-meaningless filter for exactly this actor's default `estado`.
-   Fixed by checking `Math.abs(now - date) <= window` instead - see
-   `isWithinDateRange` and the "also matches a FUTURE date" test in
-   `test/dateFilter.test.ts`.
-2. **Timezone simplification, disclosed.** `fechaHoraAperturaFija` is
-   Argentina local time (fixed UTC-3, no DST since 2009) but is parsed as
-   if it were UTC, same pragmatic shortcut HSE's `parseUkDate` makes for
-   BST - off by a constant few hours, negligible at 24h/7d/30d
-   granularity, not worth a timezone library for this.
-3. **This is a scheduling date, not a "when was this published" date** -
-   for `AP` it answers "opening in the next Nh/d", and for `ET`/`CO` it's
-   the historical opening date of a process whose _state_ may have only
-   just changed. `onlyNew` remains the reliable "what's new" signal;
-   `dateRange` is for users who specifically want opening-date semantics.
-   Disclosed in the README, not silently misleading (same posture as
-   HSE's Offence Date lag disclosure).
-
-### A real gotcha hit while doing this
-
-Running `apify run --no-purge` locally against the real site to smoke-test
-the whole loop (cold run, then a second `onlyNew: true` run against the
-state the first run wrote) worked correctly end to end - `Cargados 3 items
-al dataset` on the cold run, then `Total gestiones listadas: 2
-(onlyNew=true...)` on the second run against the real live listing, with
-`storage/key_value_stores/santafe-compras-monitor-delta-state/state.json`
-correctly accumulating all 5 ids. The actual gotcha: on this Windows/Node
-24 setup, the `apify run` CLI process crashes on exit _after_ the actor
-has already finished and logged `Cargados N items al dataset.`
-(`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... src\win\async.c`)
-
-- a libuv/Node-on-Windows shutdown issue in the CLI's process wrapper, not
-  in this actor's code. Don't mistake the crash banner for a real failure -
-  check the last log line before it (`Cargados ... al dataset.` /
-  `Total gestiones listadas: ...`) to see if the run actually succeeded.
-- **Local testing note**: same as HSE, `apify run` purges local storage by
-  default even without `--purge` explicitly - use `--no-purge` to test
-  delta behavior across two separate local runs.
-
-## Known scope limits (disclosed, not hidden)
-
-- `anio` (year) is not exposed as an input filter - tested live and it
-  doesn't appear to change the API's response, so exposing it would imply
-  a filter that doesn't actually work.
-- `fetchDetail: true` (default) adds one extra HTTP request per process.
-  For a `maxItems` covering the full `ET`/`CO` backlog (1000+ each), this
-  is a real cost/time multiplier - `fetchDetail: false` gives a
-  listing-only fast path when the extra detail isn't needed.
-- `onlyNew` is a safe post-filter, not an early-stop optimization - a
-  delta run costs the same requests as a same-size non-delta run. See the
-  "Delta engine" section above for the live evidence this was based on.
-- `event_type` is always `NEW_LISTING` - see "record_id / event_type
-  choices" above for why `CO` doesn't get a more specific value.
-- `.prettierignore` now excludes `test/fixtures` (matching the UK HSE
-  actor's own `.prettierignore`), because `test/fixtures/detail_138825.html`
-  has a genuinely malformed closing `</main>` tag that crashes prettier's
-  HTML parser - pre-existing, unrelated to this retrofit, confirmed present
-  on the original commit before the delta engine work started (verified
-  via `git stash` + `format:check` against the base commit). Also
-  pre-existing and left alone: `package.json`/`package-lock.json` were
-  never run through this repo's own `prettier --write .` before their
-  initial commit (they're still npm's default 2-space indent, not this
-  repo's configured 4-space) - `npm run format:check` reports both as
-  needing reformatting. Fixing that is a repo-wide, purely-cosmetic
-  whitespace rewrite unrelated to the delta engine, so it was deliberately
-  left out of this retrofit's diff rather than bundled in.
-
-## Sibling candidates (from the same parallel audit that found this target)
-
-Tucuman, Entre Rios and Salta all came back `viable` from the same
-6-province live audit that found this target (2026-09-04) - plain
-HTML/PHP, zero DevExpress/AJAX markers. Mendoza also viable but more
-fragile (runs COMPR.AR; the results grid itself is a plain GridView
-reachable via POST, but its own pagination mechanism was not confirmed
-live before this was written - do that first). Neuquen was rejected:
-GeneXus AJAX+WebSocket tied to session state, not reproducible with plain
-fetch/cheerio. Full audit notes in that session's workflow journal, not
-copied into any repo - re-verify live before building the next one rather
-than trusting old notes, since these sites can and do change.
+- No publication / modification timestamp in the listing; amendment
+  detection is bounded by `recheckWindowDays` on the opening date.
+- Status changes of processes older than the CO delta walk depth (2-3 pages
+  of 2,000) are only caught through the sweep of the AP/ET memory.
+- `UPDATED` says the record changed, not WHAT changed (no field-level diff;
+  would need snapshot storage).
+- The bulk CSV export (`site/output.php?a=consultas.get_csv&estado=CO&limit=10000`,
+  pipe-delimited, 9 columns, no idGestion) is not used - candidate for an
+  archive mode.

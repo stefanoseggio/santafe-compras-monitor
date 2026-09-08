@@ -1,39 +1,62 @@
 {
-  "name": "santafe-compras-monitor",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Santa Fe Compras Monitor: extracts public tenders (licitaciones, contrataciones) from the Province of Santa Fe, Argentina's official procurement JSON API, with full detail per process - dates, budget, organism, rubros and direct document links.",
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "dependencies": {
-    "apify": "^3.7.0",
-    "cheerio": "1.0.0-rc.12"
-  },
-  "devDependencies": {
-    "@apify/eslint-config": "^2.0.0",
-    "@apify/tsconfig": "^0.2.0",
-    "@types/node": "^24.0.0",
-    "eslint": "^9.29.0",
-    "eslint-config-prettier": "^10.1.5",
-    "globals": "^17.0.0",
-    "prettier": "^3.5.3",
-    "tsx": "^4.20.3",
-    "typescript": "^6.0.0",
-    "typescript-eslint": "^8.58.0",
-    "vitest": "^4.1.0"
-  },
-  "scripts": {
-    "start": "npm run start:dev",
-    "start:prod": "node dist/main.js",
-    "start:dev": "tsx src/main.ts",
-    "build": "tsc",
-    "lint": "eslint",
-    "lint:fix": "eslint --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run"
-  },
-  "author": "Stefano",
-  "license": "ISC"
+    "name": "santafe-compras-monitor",
+    "version": "2.0.0",
+    "type": "module",
+    "description": "Santa Fe (Argentina) public tenders scraper & monitor: every licitación, concurso and contratación directa of the Province of Santa Fe's Gestiones de Compra register - buyer, budget (Monto Original), deadlines, rubros, expediente and pliego/circular/acta PDF links - with server-side filters and a delta mode that reports new tenders, status changes (AP -> ET -> CO) and amended documents.",
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "dependencies": {
+        "apify": "^3.7.0",
+        "cheerio": "1.0.0-rc.12"
+    },
+    "devDependencies": {
+        "@apify/eslint-config": "^2.0.0",
+        "@apify/tsconfig": "^0.2.0",
+        "@types/node": "^24.0.0",
+        "cross-env": "^7.0.3",
+        "eslint": "^9.29.0",
+        "eslint-config-prettier": "^10.1.5",
+        "globals": "^17.0.0",
+        "prettier": "^3.5.3",
+        "tsx": "^4.20.3",
+        "typescript": "^6.0.0",
+        "typescript-eslint": "^8.58.0",
+        "vitest": "^4.1.0"
+    },
+    "scripts": {
+        "start": "npm run start:dev",
+        "start:prod": "node dist/main.js",
+        "start:dev": "tsx src/main.ts",
+        "build": "tsc",
+        "lint": "eslint",
+        "lint:fix": "eslint --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "test": "vitest run",
+        "test:live": "cross-env LIVE=1 vitest run"
+    },
+    "author": "Stefano",
+    "license": "Apache-2.0",
+    "keywords": [
+        "apify",
+        "actor",
+        "santa fe",
+        "argentina",
+        "licitaciones",
+        "compras públicas",
+        "contrataciones",
+        "gestiones de compra",
+        "public procurement",
+        "tenders",
+        "scraper",
+        "monitor",
+        "delta",
+        "b2b data"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/stefanoseggio/santafe-compras-monitor.git"
+    },
+    "homepage": "https://apify.com/stefano_seggio/santafe-compras-monitor"
 }

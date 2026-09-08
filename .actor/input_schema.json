@@ -1,52 +1,228 @@
 {
     "$schema": "https://apify.com/schemas/v1/input.ide.json",
-    "title": "Santa Fe Compras Monitor Configuration",
+    "title": "Santa Fe Tenders Scraper & Monitor",
+    "description": "Every filter below is applied by the register's own search API (server-side) unless stated otherwise, so narrow runs are fast and cheap. Leave the filters empty to walk the selected estado lists newest-first.",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "estados": {
-            "title": "States to extract",
+            "sectionCaption": "Filters",
+            "sectionDescription": "Mirror of the site's own search form (santafe.gov.ar/gestionesdecompras) plus the estado tabs. Combine freely - e.g. estado AP + rubro 'medicamentos' + comprador 'Hospital'.",
+            "title": "Estados (process states)",
             "type": "array",
-            "description": "Which process states to fetch. AP = upcoming openings, ET = in progress, CO = concluded/awarded.",
+            "description": "Which lists to read. AP = Para Apertura (published, offers not yet opened - where every new tender appears first), ET = En Trámite (opened, being evaluated - actas and preadjudicación land here), CO = Concluida (finished). Each is a separate server-side query.",
             "editor": "select",
             "items": {
                 "type": "string",
                 "enum": ["AP", "ET", "CO"],
                 "enumTitles": [
-                    "Apertura Proxima (upcoming openings)",
-                    "En Tramite (in progress)",
-                    "Concluido (awarded/closed)"
+                    "AP - Para Apertura (upcoming openings)",
+                    "ET - En Trámite (in progress)",
+                    "CO - Concluida (concluded)"
                 ]
             },
             "default": ["AP"],
+            "prefill": ["AP", "ET"],
             "minItems": 1
+        },
+        "anio": {
+            "title": "Year (año)",
+            "type": "integer",
+            "description": "Year of the process number (anioGestion). The site's own UI always applies the current year; leave empty for all years (2000 onwards).",
+            "editor": "number",
+            "minimum": 2000,
+            "maximum": 2100
+        },
+        "objeto": {
+            "title": "Subject contains (objeto)",
+            "type": "string",
+            "description": "Case-insensitive phrase search over the tender subject, e.g. 'limpieza', 'medicamentos', 'servicio de vigilancia'. Word order matters ('servicio de limpieza' matches, 'limpieza servicio' does not).",
+            "editor": "textfield"
+        },
+        "tipoGestion": {
+            "title": "Procedure types (tipo de gestión)",
+            "type": "array",
+            "description": "One server-side query per selected type. Codes are the site's own (L = Licitación Pública, P = Licitación Privada, T = Contratación Directa, ...).",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["L", "P", "A", "T", "B", "V", "C", "I", "D", "S", "X", "Y", "O"],
+                "enumTitles": [
+                    "L - Licitación Pública",
+                    "P - Licitación Privada",
+                    "A - Licitación Acelerada",
+                    "T - Contratación Directa",
+                    "B - Concurso Público",
+                    "V - Concurso Privado",
+                    "C - Concurso de Precios",
+                    "I - Concursos de Proyectos Integrales",
+                    "D - Gestión Directa",
+                    "S - Subasta o Remate Público",
+                    "X - Procedimiento Competitivo Ágil",
+                    "Y - Entes Portuarios - Contrataciones",
+                    "O - Otros"
+                ]
+            },
+            "default": []
+        },
+        "tipoModalidad": {
+            "title": "Modality (tipo de modalidad)",
+            "type": "string",
+            "description": "Contracting modality code from the site.",
+            "editor": "select",
+            "enum": ["1", "2", "3", "4", "5", "6", "7", "9999"],
+            "enumTitles": [
+                "1 - Sin Modalidad",
+                "2 - Convenio Marco",
+                "3 - Contratación Unificada",
+                "4 - Orden de Compra Abierta",
+                "5 - Subasta Inversa",
+                "6 - Llave en Mano",
+                "7 - Consumo Convenio Marco",
+                "9999 - Por Defecto"
+            ]
+        },
+        "comprador": {
+            "title": "Buyer (organismo licitante)",
+            "type": "string",
+            "description": "The organism running the procedure, as its site id (idOrganismoLey12510, e.g. 27) or a distinctive part of its name (e.g. 'Administración Provincial de Impuestos', 'Hospital Cullen'). Names are matched against the site's own organism list at run start; an ambiguous name fails with the candidates listed.",
+            "editor": "textfield"
+        },
+        "solicitante": {
+            "title": "Requesting body (organismo comitente)",
+            "type": "string",
+            "description": "The organism the purchase is for, same id space and name matching as 'Buyer' (e.g. 'Ministerio de Salud').",
+            "editor": "textfield"
+        },
+        "rubro": {
+            "title": "Category (rubro)",
+            "type": "string",
+            "description": "Product/service category, as the site's idEspecie (e.g. 29) or part of its name (e.g. 'medicinales', 'limpieza', 'alimentos'). Matched against the site's 78 rubros at run start.",
+            "editor": "textfield"
+        },
+        "subrubro": {
+            "title": "Sub-category (subrubro)",
+            "type": "string",
+            "description": "Sub-category within the selected rubro, as idFamilia or part of its name. Requires 'Category (rubro)'.",
+            "editor": "textfield"
+        },
+        "nroGestion": {
+            "title": "Process number (nro. de gestión)",
+            "type": "string",
+            "description": "Exact process number as printed on the site, e.g. '18' or '02' (combine with the year: several organisms share the same numbering).",
+            "editor": "textfield",
+            "pattern": "^[A-Za-z0-9/-]{1,20}$"
+        },
+        "nroExpediente": {
+            "title": "File number (nro. de expediente)",
+            "type": "string",
+            "description": "Exact, full expediente number, e.g. 'EE-2026-00001797-APPSF-OD' (partial values match nothing on the site).",
+            "editor": "textfield",
+            "pattern": "^[A-Za-z0-9#/. -]{1,60}$"
+        },
+        "openingFrom": {
+            "title": "Opening date from",
+            "type": "string",
+            "description": "Only tenders whose bid opening (fecha de apertura) is on or after this date. Absolute (2026-09-01) or relative: '7 days' counts back from today, '+7 days' counts forward (Santa Fe calendar). Applied client-side after fetching the listing (the site has no date filter) - rows outside the window are simply skipped and not remembered.",
+            "editor": "datepicker",
+            "dateType": "absoluteOrRelative"
+        },
+        "openingTo": {
+            "title": "Opening date to",
+            "type": "string",
+            "description": "Only tenders opening on or before this date. Absolute or relative ('+30 days' = opening within the next month). Client-side.",
+            "editor": "datepicker",
+            "dateType": "absoluteOrRelative"
+        },
+        "eventTypes": {
+            "title": "Event types to deliver",
+            "type": "array",
+            "description": "NEW_LISTING = a process never delivered before; STATUS_CHANGE = a known process that moved to another estado (AP -> ET -> CO); UPDATED = a known open process whose detail page changed (a circular aclaratoria, an acta de apertura, a preadjudicación report, a new opening date...). The last two exist in delta mode only.",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["NEW_LISTING", "STATUS_CHANGE", "UPDATED"],
+                "enumTitles": ["New tenders", "Status changes (AP -> ET -> CO)", "Amendments to known tenders"]
+            },
+            "default": ["NEW_LISTING", "STATUS_CHANGE", "UPDATED"]
+        },
+        "onlyNew": {
+            "sectionCaption": "Monitoring (delta mode)",
+            "sectionDescription": "Turn on 'Only new' and put the Actor on a schedule: each run returns only what changed on the register since the previous run.",
+            "title": "Only new / changed since the last run",
+            "type": "boolean",
+            "description": "Remembers every process it has delivered (per filter set, in a named key-value store) with the estado it was in and a fingerprint of its detail page, and returns only processes that are new, moved to another estado, or were amended since. Each estado list is walked newest-first and stops as soon as it reaches already-known records.",
+            "default": false,
+            "prefill": true
+        },
+        "recheckWindowDays": {
+            "title": "Amendment re-check window (days)",
+            "type": "integer",
+            "description": "Delta mode with detail: known processes whose opening date is within this many days in the past (or any time in the future) get their detail page re-read every run to detect amendments (UPDATED). The register shows no 'last modified' signal, so this re-read is the only way to see a new circular or acta. 0 disables it. Re-reads are not charged unless something changed.",
+            "editor": "number",
+            "default": 30,
+            "minimum": 0,
+            "maximum": 365
+        },
+        "sortBy": {
+            "title": "Order",
+            "type": "string",
+            "description": "'newest' (idGestion descending = most recently created first) is required for delta mode. 'openingSoonest' / 'openingLatest' order by bid-opening date; 'mostViewed' by the site's own view counter (full runs only).",
+            "editor": "select",
+            "enum": ["newest", "openingSoonest", "openingLatest", "mostViewed"],
+            "enumTitles": [
+                "Newest created first (recommended)",
+                "Opening date, soonest first",
+                "Opening date, latest first",
+                "Most viewed first"
+            ],
+            "default": "newest"
+        },
+        "deltaStateName": {
+            "title": "Delta state name",
+            "type": "string",
+            "description": "Optional label for the memory of a monitoring task. Defaults to a fingerprint of your filters, so different schedules never interfere. Set the same name on two tasks to make them share one memory.",
+            "editor": "textfield",
+            "pattern": "^[A-Za-z0-9-]{1,30}$"
+        },
+        "resetState": {
+            "title": "Reset delta memory before this run",
+            "type": "boolean",
+            "description": "Forget every previously delivered process for this delta state and re-baseline (the run then returns up to 'Max records' newest processes).",
+            "default": false
+        },
+        "maxItems": {
+            "sectionCaption": "Limits & performance",
+            "title": "Max records per run",
+            "type": "integer",
+            "description": "Hard cap on delivered records (and therefore on cost: you pay per record). In delta mode anything beyond the cap is simply delivered by the next run.",
+            "editor": "number",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 100000,
+            "unit": "records"
         },
         "fetchDetail": {
             "title": "Fetch full detail per process",
             "type": "boolean",
-            "description": "When enabled (default), fetches each process's detail page for full description, rubros, organism and direct document links (pliego, resolucion, etc). Disable for a faster, listing-only run.",
+            "description": "Opens each process page (one extra request) for the publication timestamp, budget (Monto Original), submission deadline, places, rubros, requesting organism, contact, expediente and the pliego / circular / acta / preadjudicación document links. Off = listing-only summary records (cheaper 'result-summary' price; no UPDATED detection and no status sweep).",
             "default": true
         },
-        "maxItems": {
-            "title": "Max processes to extract",
+        "maxConcurrency": {
+            "title": "Parallel detail requests",
             "type": "integer",
-            "description": "Hard cap on the number of processes returned this run, across all selected states.",
-            "default": 100,
-            "minimum": 1
-        },
-        "onlyNew": {
-            "title": "Delta mode - only new processes since last run",
-            "type": "boolean",
-            "description": "When enabled, persists seen process ids between runs (in this actor's own key-value store, per estado) and returns only processes not seen in a prior run. NOTE: this source's listing order is not reliably newest-first (AP is sorted by soonest-opening-date, not recency; ET/CO show no correlation between position and id or date at all - verified live), so pagination always walks the full listing up to maxItems as it does today, and the unseen-only filter is applied after that fetch rather than short-circuiting it early. Recommended for recurring monitoring; leave off for a full one-off extraction.",
-            "default": false
+            "description": "How many process pages are fetched at once. The site answers a page in 0.1-0.3 s and tolerated 10 in parallel without throttling; 5 is a polite default.",
+            "editor": "number",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 10
         },
         "dateRange": {
-            "title": "Filter by recency (opening date)",
+            "title": "Legacy recency preset (deprecated - use 'Opening date from / to')",
             "type": "string",
-            "description": "Optionally restrict results to processes whose own fechaHoraApertura (bid opening date/time) falls within this window of now. Independent of onlyNew - note this is a scheduling date, not a publication date: for AP (upcoming openings) it's necessarily in the future, so this answers 'opening in the next Nh/d', not 'discovered in the last Nh/d'. onlyNew is the more reliable 'what's new' signal for recurring monitoring; use this when you specifically want the source's own opening-date semantics.",
-            "editor": "select",
-            "enum": ["24h", "7d", "30d"],
-            "enumTitles": ["Next/last 24 hours", "Next/last 7 days", "Next/last 30 days"]
+            "description": "Kept for tasks created with version 1: '24h', '7d' or '30d' are interpreted as an opening-date window of that many days before AND after today.",
+            "editor": "hidden",
+            "pattern": "^(24h|7d|30d)$"
         }
     }
 }

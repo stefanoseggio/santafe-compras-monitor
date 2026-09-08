@@ -1,12 +1,57 @@
 {
     "$schema": "https://apify.com/schemas/v1/output.ide.json",
     "actorOutputSchemaVersion": 1,
-    "title": "Output schema",
+    "title": "Santa Fe tenders output",
     "properties": {
         "results": {
             "type": "string",
-            "title": "Results",
+            "title": "All records (JSON)",
             "template": "{{links.apiDefaultDatasetUrl}}/items"
+        },
+        "resultsNewestFirst": {
+            "type": "string",
+            "title": "All records, newest first (JSON)",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?desc=true"
+        },
+        "csv": {
+            "type": "string",
+            "title": "CSV export",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?format=csv&desc=true"
+        },
+        "excel": {
+            "type": "string",
+            "title": "Excel export",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?format=xlsx&desc=true"
+        },
+        "overview": {
+            "type": "string",
+            "title": "Overview view",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=overview&desc=true"
+        },
+        "deadlines": {
+            "type": "string",
+            "title": "Deadlines & openings view",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=deadlines&desc=true"
+        },
+        "documents": {
+            "type": "string",
+            "title": "Documents & awards view",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=documents&desc=true"
+        },
+        "buyers": {
+            "type": "string",
+            "title": "Buyers & contacts view",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=buyers&desc=true"
+        },
+        "changes": {
+            "type": "string",
+            "title": "Status changes & amendments view",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=changes&desc=true"
+        },
+        "runSummary": {
+            "type": "string",
+            "title": "Run summary (counts, totals on the register, delta store)",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
         }
     }
 }

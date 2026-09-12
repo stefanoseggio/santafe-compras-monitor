@@ -1,21 +1,24 @@
 {
-    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
-    "actorSpecification": 1,
-    "name": "santafe-compras-monitor",
-    "title": "Santa Fe Tenders Scraper & Monitor (Licitaciones Santa Fe)",
-    "description": "Scrape and monitor every public tender of the Province of Santa Fe, Argentina: licitaciones, concursos, contrataciones directas of ministries and hospitals with buyer, budget, deadlines, rubros, expediente and pliego/circular/acta PDF links. Delta mode for new, status-changed and amended tenders.",
-    "version": "2.0",
-    "buildTag": "latest",
-    "minMemoryMbytes": 256,
-    "maxMemoryMbytes": 1024,
-    "meta": {
-        "templateId": "ts-crawlee-cheerio"
-    },
-    "inputSchema": "./input_schema.json",
-    "outputSchema": "./output_schema.json",
-    "storages": {
-        "dataset": "./dataset_schema.json"
-    },
-    "changelog": "../CHANGELOG.md",
-    "dockerfile": "../Dockerfile"
+  "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+  "actorSpecification": 1,
+  "name": "santafe-compras-monitor",
+  "title": "Santa Fe Argentina Licitaciones - Tender Delta API",
+  "description": "Scrape and monitor every public tender of Santa Fe Province, Argentina: licitaciones, concursos and contrataciones directas of ministries, hospitals and SAMCOs, with buyer, budget, deadlines, rubros, expediente and pliego/circular/acta PDF links. Delta mode flags new, changed and amended tenders.",
+  "version": "2.0",
+  "buildTag": "latest",
+  "minMemoryMbytes": 256,
+  "maxMemoryMbytes": 1024,
+  "meta": {
+    "templateId": "ts-crawlee-cheerio"
+  },
+  "inputSchema": "./input_schema.json",
+  "outputSchema": "./output_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "changelog": "../CHANGELOG.md",
+  "dockerfile": "../Dockerfile",
+  "categories": [
+    "BUSINESS"
+  ]
 }

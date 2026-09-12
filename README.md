@@ -1,164 +1,164 @@
-# Santa Fe Government Tenders Monitor - Argentina Public Procurement (Licitaciones Santa Fe)
+<div align="center">
 
-## Executive value proposition
+# Santa Fe Argentina Licitaciones - Tender Delta API
 
-The Province of Santa Fe, Argentina publishes every public procurement process on one official register, _Gestiones de Compra_ (santafe.gov.ar/gestionesdecompras) - but the portal has no RSS feed, no e-mail alerts and no documented API, and its search form defaults to the current year with a plain CSV export that carries no ids, amounts or document links. Tracking a rubro or a set of buyers today means re-opening the AP / ET / CO lists by hand, across dozens of ministries, hospitals and SAMCOs, and re-reading each process page to notice a circular or a moved opening date - work that does not scale past a handful of buyers. This Actor turns that register into structured JSON/CSV with buyer, budget, deadlines, rubros, expediente and direct PDF links to pliegos, circulares and actas, and its delta mode returns, on every scheduled run, only the tenders that are new, changed status, or were amended since the previous run - so a person checks one feed instead of the portal, one list at a time.
+**A stateful monitor for every public tender, concurso and contratación directa published by the Province of Santa Fe, Argentina**
 
-## Who uses this
+[![Built for Apify](https://img.shields.io/badge/Built%20for-Apify-orange?logo=apify&logoColor=white)](https://apify.com)
+[![Pay-Per-Event](https://img.shields.io/badge/Pay--Per--Event-from%20%240.001%2Frecord-blueviolet)](https://apify.com/stefano_seggio/santafe-compras-monitor)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-brightgreen)](https://github.com/stefanoseggio/santafe-compras-monitor/blob/main/LICENSE)
 
-- **Suppliers to the provincial health system** (pharma and medical-supply distributors, lab, cleaning and food vendors to hospitals and SAMCOs) filter by `rubro` (e.g. `medicinales`) and `estado: AP`, then watch `comprador`, `submissionDeadline`, `daysUntilDeadline` and `montoOriginalAmount` to decide bid or no-bid inside a short window and pull the pliego straight from `documents`.
-- **Construction, IT, security and facility-service contractors to ministries** search by `objeto` or `comprador` across the AP and ET lists, check `montoOriginalAmount`, whether the process is `isElectronic` (and its `bidUrl` on gestionvirtual.santafe.gob.ar) to route the opportunity to the right sales owner.
-- **Bid consultants and _gestores de licitaciones_** run the Actor in delta mode with `fetchDetail: true` on the tenders their clients already track, and watch for `event_type: "UPDATED"` together with `hasCircular` or a changed `openingNote` (e.g. `(*** NUEVA FECHA ***)`) to know a draft offer needs a second look before the deadline.
+[![Run on Apify](https://img.shields.io/badge/Run%20on-Apify%20Store-00C1AA?logo=apify&logoColor=white&style=for-the-badge)](https://apify.com/stefano_seggio/santafe-compras-monitor)
 
-## Input
+Actor console (owner reference): [console.apify.com/actors/jfoq1flE7KqKb3qAb](https://console.apify.com/actors/jfoq1flE7KqKb3qAb)
 
-Every filter below is applied by the register's own search API server-side (except the two opening-date fields, which are client-side) so a narrow run is one request. Leave filters empty to walk the selected `estados` newest-first.
+</div>
 
-Daily monitor of every new, changed or amended open tender:
+---
 
-```json
-{ "estados": ["AP", "ET"], "onlyNew": true, "maxItems": 500 }
+## Santa Fe government tenders, turned into a feed you can actually monitor
+
+The Province of Santa Fe, Argentina publishes every public procurement process - licitaciones públicas, licitaciones privadas, contrataciones directas, concursos de precios and more - on one official register, *Gestiones de Compra* (`santafe.gov.ar/gestionesdecompras`). The portal has no RSS feed, no e-mail alerts and no documented API, its search form silently defaults to the current year, and the only export is a plain CSV with no ids, no amounts and no document links. Tracking a rubro or a set of buyers today means re-opening the AP / ET / CO lists by hand across dozens of ministries, hospitals and SAMCOs, then re-reading each process page just to notice a circular aclaratoria or a moved opening date - work that stops scaling past a handful of buyers.
+
+**santafe-compras-monitor** is an Apify Actor that turns that register into structured, queryable public-procurement data: buyer, budget, deadlines, rubros, expediente numbers and direct links to pliegos, circulares and actas, all in one JSON/CSV record per process. Point it at the AP (Para Apertura), ET (En Trámite) or CO (Concluida) lists, filter by rubro, buyer or procedure type the same way the site's own search form does, and put it on a schedule: its delta mode returns, on every run, only the tenders that are new, changed status, or amended since the previous run - so a person checks one feed instead of the portal, list by list.
+
+It is built for the three groups who watch this register today: suppliers to the provincial health system (pharma, medical-supply, lab, cleaning and food vendors to hospitals and SAMCOs) filtering by rubro and submission deadline to decide bid or no-bid inside a short window; construction, IT, security and facility-service contractors searching by objeto or comprador and checking budget and electronic-bid eligibility before routing an opportunity to a sales owner; and bid consultants (*gestores de licitaciones*) who need to know the instant a tracked tender gets a new circular, an acta de apertura, or a moved opening date, before a draft offer goes stale.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["Gestiones de Compra register\nsantafe.gov.ar/gestionesdecompras\nAP / ET / CO lists"] -->|"server-side filters:\nestados, rubro, comprador,\ntipoGestion, nroExpediente..."| B["Listing walk\nnewest-first (idGestion DESC)"]
+    B --> C{"fetchDetail?"}
+    C -->|true| D["Detail page parse\nbudget, deadlines, rubros,\ncontact, documents"]
+    C -->|false| E["Listing-only record"]
+    D --> F["contentHash fingerprint\n(estado, dates, budget,\nexpedientes, documents)"]
+    F --> G["Delta engine\nkey-value store per deltaStateName"]
+    G -->|never seen before| H["NEW_LISTING"]
+    G -->|known, different list| I["STATUS_CHANGE"]
+    G -->|known, fingerprint changed| J["UPDATED"]
+    H --> K[("result event\n$0.003 / record")]
+    I --> K
+    J --> K
+    E --> L[("result-summary event\n$0.001 / record")]
+    K --> M[("Apify Dataset\nJSON / CSV / Excel\n+ 5 ready-made views")]
+    L --> M
 ```
 
-Hospital medicines and medical supplies, monitored:
+## What's inside
 
-```json
-{ "estados": ["AP"], "rubro": "medicinales", "onlyNew": true, "maxItems": 300 }
+| Feature | Grounded in |
+| --- | --- |
+| Server-side filters mirroring the site's own search form | `estados` (AP/ET/CO), `tipoGestion` (13 procedure codes), `tipoModalidad`, `comprador` / `solicitante` (resolved by id or name against the site's own organism list), `rubro` / `subrubro`, `nroGestion`, `nroExpediente` |
+| Delta / monitoring mode | `onlyNew: true` walks each list newest-first and delivers only `NEW_LISTING`, `STATUS_CHANGE` (a process moved AP → ET → CO) or `UPDATED` (an amended detail page) events, filterable via `eventTypes` |
+| Full detail enrichment | `fetchDetail: true` opens each process page for publication date, budget (`montoOriginalAmount`), submission deadline, rubros, requesting organism, contact info and expediente |
+| Amendment detection without a "last modified" signal | `recheckWindowDays` re-reads the detail page of every known process opening soon, compares a `contentHash` fingerprint, and delivers only real changes - re-checks that find nothing are not charged |
+| Direct document links | `documents[]` with a normalised `kind` (pliego, circular, acta de apertura, cuadro comparativo, preadjudicación, adjudicación, orden de provisión...) and `hasPliego` / `hasCircular` / `hasAdjudicacion` flags |
+| Opening-date window | `openingFrom` / `openingTo`, absolute (`2026-09-01`) or relative (`+7 days`), computed on the Santa Fe calendar |
+| Configurable concurrency | `maxConcurrency` (1-10) - the site tolerates 10 parallel detail requests without throttling; a 500-record run finishes in under a minute |
+| Ready-made views | Overview, Deadlines & openings, Documents & awards, Buyers & contacts, and Status changes & amendments, plus CSV/Excel export from the Output tab or API |
+
+## Quick start
+
+Run it from the Apify CLI with a real, filtered monitoring input - hospital medicines and medical supplies, delta mode:
+
+```bash
+apify call santafe-compras-monitor --input '{
+  "estados": ["AP", "ET"],
+  "rubro": "medicinales",
+  "onlyNew": true,
+  "recheckWindowDays": 30,
+  "maxItems": 300,
+  "fetchDetail": true
+}'
 ```
 
-| Field                       | Type     | Default                    | Description                                                                                                                                                       |
-| ---------------------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `estados`                    | string[] | `["AP"]`                    | Lists to read: `AP` Para Apertura (published, offers not yet opened - where every new tender appears first), `ET` En Trámite (opened, being evaluated), `CO` Concluida (finished). One server-side query per list.  |
-| `anio`                        | integer  | -                            | Year of the process number (`anioGestion`). The site's own UI always applies the current year; empty = all years since 2000.                                       |
-| `objeto`                      | string   | -                            | Case-insensitive phrase search over the tender subject, e.g. `limpieza`, `medicamentos`, `servicio de vigilancia`. Word order matters.                              |
-| `tipoGestion`                 | string[] | `[]`                         | Procedure types by site code, one query per type: `L` Licitación Pública, `P` Licitación Privada, `A` Licitación Acelerada, `T` Contratación Directa, `B` Concurso Público, `V` Concurso Privado, `C` Concurso de Precios, `I` Concursos de Proyectos Integrales, `D` Gestión Directa, `S` Subasta o Remate Público, `X` Procedimiento Competitivo Ágil, `Y` Entes Portuarios, `O` Otros. |
-| `tipoModalidad`               | string   | -                            | Contracting modality code: `1` Sin Modalidad, `2` Convenio Marco, `3` Contratación Unificada, `4` Orden de Compra Abierta, `5` Subasta Inversa, `6` Llave en Mano, `7` Consumo Convenio Marco, `9999` Por Defecto. |
-| `comprador`                   | string   | -                            | The organism running the procedure (organismo licitante), as its site id (`idOrganismoLey12510`) or a distinctive part of its name (e.g. `Hospital Cullen`). Matched against the site's own organism list at run start. |
-| `solicitante`                 | string   | -                            | The organism the purchase is for (organismo comitente), same id space and name matching as `comprador` (e.g. `Ministerio de Salud`).                               |
-| `rubro`                       | string   | -                            | Product/service category, as the site's `idEspecie` or part of its name (e.g. `medicinales`, `limpieza`, `alimentos`). Matched against the site's 78 rubros at run start. |
-| `subrubro`                    | string   | -                            | Sub-category within the selected rubro, as `idFamilia` or part of its name. Requires `rubro`.                                                                        |
-| `nroGestion`                  | string   | -                            | Exact process number as printed on the site, e.g. `18` (combine with `anio`: several organisms share the same numbering).                                            |
-| `nroExpediente`               | string   | -                            | Exact, full expediente number, e.g. `EE-2026-00001797-APPSF-OD` (partial values match nothing on the site).                                                          |
-| `openingFrom`, `openingTo`    | string   | -                            | Bid-opening date window: absolute (`2026-09-01`) or relative (`7 days` back, `+7 days` forward). Client-side - the site has no date filter; rows outside the window are skipped, not remembered. |
-| `eventTypes`                  | string[] | `NEW_LISTING`, `STATUS_CHANGE`, `UPDATED` | Which delta events to deliver (delta mode only).                                                                                            |
-| `onlyNew`                     | boolean  | `false`                      | Delta mode - remembers every process delivered (per filter set) with its estado and a fingerprint of its detail page, and returns only new, status-changed or amended processes. See Reliability below. |
-| `recheckWindowDays`           | integer  | `30`                         | Known processes opening within this many days in the past (or any time in the future) get their detail page re-read every run to detect amendments. `0` disables. |
-| `sortBy`                      | string   | `newest`                     | `newest` (`idGestion` descending, required for delta mode), `openingSoonest`, `openingLatest`, `mostViewed` (full runs only).                                        |
-| `deltaStateName`              | string   | fingerprint of the filters   | Label for the delta memory of a monitoring task; set the same name on two tasks to share one memory.                                                                 |
-| `resetState`                  | boolean  | `false`                      | Forget every previously delivered process for this delta state and re-baseline.                                                                                      |
-| `maxItems`                    | integer  | `100`                        | Hard cap on delivered records per run (max `100000`). In delta mode, anything beyond the cap is delivered by the next run.                                           |
-| `fetchDetail`                 | boolean  | `true`                       | Open each process page for publication time, budget, deadline, places, rubros, requesting organism, contact, expediente and document links. Off = cheaper listing-only records, no `UPDATED` detection. |
-| `maxConcurrency`              | integer  | `5`                          | Parallel detail-page requests (`1`-`10`).                                                                                                                             |
+Or a broad daily sweep of every new, changed or amended open tender across the province:
 
-## Output
+```bash
+apify call santafe-compras-monitor --input '{ "estados": ["AP", "ET"], "onlyNew": true, "maxItems": 500 }'
+```
 
-One real record (the `detail` compatibility object trimmed for length):
+Node.js (`run-monitor.js`) and Python (`run_monitor.py`) equivalents that call the same Actor through `apify-client` are below.
+
+## Sample output record
+
+One real record (trimmed for length - every record carries 84 fields):
 
 ```json
 {
-    "record_id": "139031",
-    "event_type": "NEW_LISTING",
-    "scraped_at": "2026-09-08T07:24:09.044Z",
-    "is_new": true,
-    "source_url": "https://www.santafe.gov.ar/gestionesdecompras/site/gestion.php?idGestion=139031",
-    "data_source": "Gestiones de Compra - Gobierno de la Provincia de Santa Fe (santafe.gov.ar/gestionesdecompras), CC BY-SA 2.5 AR",
-    "idGestion": "139031",
-    "estado": "AP",
-    "tipoGestion": "LICITACIÓN PÚBLICA",
-    "tipoGestionCode": "L",
-    "numeroGestion": "06",
-    "anioGestion": "2026",
-    "numeroAnio": "06-2026",
-    "objeto": "CONTRATACIÓN DE UN SERVICIO DE MANTENIMIENTO PREVENTIVO Y CORRECTIVO PARA CENTRAL TELEFÓNICA HARRIS...",
-    "comprador": "MINISTERIO DE GOBIERNO E INNOVACIÓN PÚBLICA",
-    "organismoComitente": ["MINISTERIO DE GOBIERNO E INNOVACIÓN PÚBLICA"],
-    "fechaHoraApertura": "28-09-2026",
-    "openingAt": "2026-09-28T13:00:00.000Z",
-    "daysUntilOpening": 20,
-    "isOpeningInFuture": true,
-    "publishedAtLocal": "07-09-2026 15:54 Hs.",
-    "publishedAt": "2026-09-07T18:54:00.000Z",
-    "estadoLabel": "PARA APERTURA",
-    "montoOriginalText": "U$S 60.000,00",
-    "montoOriginalAmount": 60000,
-    "montoOriginalCurrency": "USD",
-    "valorPliego": "NO CORRESPONDE",
-    "valorPliegoIsFree": true,
-    "rubros": [{ "rubro": "EQUIPOS Y ACCESORIOS DE COMUNICACION", "subrubro": "EQUIPOS Y ACCESORIOS DE COMUNICACION" }],
-    "submissionPlace": "EL PROVEEDOR A EFECTOS DE LA PRESENTACIÓN DE SU OFERTA, DEBERÁ INGRESAR AL SIGUIENTE LINK: HTTPS://GESTIONVIRTUAL.SANTAFE.GOB.AR",
-    "contactInfo": "(0342) 450-6600 INTERNO 1302 - 1593 - COMPRASMGP@SANTAFE.GOV.AR",
-    "contactEmails": ["comprasmgp@santafe.gov.ar"],
-    "contactPhones": ["(0342) 450-6600"],
-    "expediente": "EE-2026-00006835-APPSF-PE",
-    "expedienteUrl": "https://www.santafe.gov.ar/expedientes-web/expediente-timbo/?anioTimbo=2026&numeroTimbo=00006835&tipoReparticion=APPSF&reparticionTimbo=PE&tipoTimbo=1&buscarTimbo=Buscar",
-    "isElectronic": true,
-    "bidUrl": "https://gestionvirtual.santafe.gob.ar/#/bandeja_proveedores/create/form/680a87a12a055d2295ea39a0?expedienteCode=EE-2026-00006835-APPSF-PE",
-    "documents": [
-        {
-            "kind": "pliego",
-            "tipo": "Pliego",
-            "nombre": "PLIEGO ÚNICO DE BASES Y CONDICIONES GENERALES",
-            "url": "https://www.santafe.gov.ar/gestionesdecompras/descargar.php?m=anexo&id=171910&hash=8cd5df74023f7e1c8c86cc954d783796&panel=0",
-            "id": "171910"
-        },
-        {
-            "kind": "pliego",
-            "tipo": "Pliego",
-            "nombre": "PLIEGO DE BASES Y CONDICIONES PARTICULARES",
-            "url": "https://www.santafe.gov.ar/gestionesdecompras/descargar.php?m=anexo&id=171911&hash=eb5f80ad8d89a3f52acb2e49d71c981d&panel=0",
-            "id": "171911"
-        }
-    ],
-    "documentCount": 4,
-    "hasPliego": true,
-    "hasCircular": false,
-    "printPdfUrl": "https://www.santafe.gov.ar/gestionesdecompras/site/output.php?a=gestiones.ver&idGestion=139031&print=1",
-    "detailFetched": true,
-    "contentHash": "62c66a944a7fd695e0dbfe1cefec285c945fda10"
+  "record_id": "139031",
+  "event_type": "NEW_LISTING",
+  "scraped_at": "2026-09-08T07:24:09.044Z",
+  "source_url": "https://www.santafe.gov.ar/gestionesdecompras/site/gestion.php?idGestion=139031",
+  "estado": "AP",
+  "tipoGestion": "LICITACIÓN PÚBLICA",
+  "numeroAnio": "06-2026",
+  "objeto": "CONTRATACIÓN DE UN SERVICIO DE MANTENIMIENTO PREVENTIVO Y CORRECTIVO PARA CENTRAL TELEFÓNICA...",
+  "comprador": "MINISTERIO DE GOBIERNO E INNOVACIÓN PÚBLICA",
+  "openingAt": "2026-09-28T13:00:00.000Z",
+  "daysUntilOpening": 20,
+  "montoOriginalAmount": 60000,
+  "montoOriginalCurrency": "USD",
+  "rubros": [{ "rubro": "EQUIPOS Y ACCESORIOS DE COMUNICACION", "subrubro": "EQUIPOS Y ACCESORIOS DE COMUNICACION" }],
+  "expediente": "EE-2026-00006835-APPSF-PE",
+  "isElectronic": true,
+  "bidUrl": "https://gestionvirtual.santafe.gob.ar/#/bandeja_proveedores/create/form/680a87a12a055d2295ea39a0?expedienteCode=EE-2026-00006835-APPSF-PE",
+  "documents": [
+    { "kind": "pliego", "nombre": "PLIEGO ÚNICO DE BASES Y CONDICIONES GENERALES", "url": "https://www.santafe.gov.ar/gestionesdecompras/descargar.php?m=anexo&id=171910&hash=8cd5df74023f7e1c8c86cc954d783796&panel=0" }
+  ],
+  "documentCount": 4,
+  "hasPliego": true,
+  "hasCircular": false,
+  "contentHash": "62c66a944a7fd695e0dbfe1cefec285c945fda10"
 }
 ```
 
-A status change carries `"event_type": "STATUS_CHANGE"`, `"previousEstado": "AP"`, `"estado": "ET"`; an amendment carries `"event_type": "UPDATED"`, `"is_new": false` and, typically, `"hasCircular": true` or a new `openingNote` such as `(*** NUEVA FECHA ***)`.
+A status change carries `event_type: "STATUS_CHANGE"` and `previousEstado`; an amendment carries `event_type: "UPDATED"`, `is_new: false` and typically `hasCircular: true` or a new `openingNote` such as `(*** NUEVA FECHA ***)`.
 
-Every record carries all 84 fields, grouped as follows:
-
-| Group                         | Fields                                                                                                                                                                                                                                                                            |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Integration envelope           | `record_id`, `event_type` (`NEW_LISTING` / `STATUS_CHANGE` / `UPDATED`), `scraped_at`, `is_new`, `source_url`, `data_source` (CC BY-SA 2.5 AR attribution)                                                                                                                       |
-| Identity (v1) + detail (v1)    | `idGestion`, `estado`, `tipoGestion`, `numeroGestion`, `anioGestion`, `fechaHoraApertura`, `objeto`, `comprador`, `valorPliego`, `numeroExpediente`, `detail` (`fields`, `rubros`, `documentos` kept verbatim)                                                                    |
-| Listing twins                  | `idGestionNumber`, `numeroAnio`, `tipoGestionCode`, `tipoModalidad`, `idOrganismoGestion`, `objetoCompleto`, `destinos`, `openingAt` / `openingDate` / `daysUntilOpening` / `isOpeningInFuture`, `valorPliegoAmount` / `valorPliegoCurrency` / `valorPliegoIsFree`, `previousEstado`, `isElectronic`, `bidUrl`, `printPdfUrl`, `documentsUrl` |
-| Detail (`fetchDetail: true`)   | `estadoLabel` / `estadoStage` / `estadoFromDetail`, `publishedAtLocal` / `publishedAt` / `publishedDate` / `daysSincePublished`, `modalidad`, `alcance`, `descripcion`, `rubros[]` / `rubroNames` / `subrubroNames`, `organismoComitente[]`, `organismoLicitante`, `submissionPlace`, `submissionDeadlineLocal` / `submissionDeadline` / `daysUntilDeadline`, `openingPlace`, `openingNote`, `deliveryPlaceAndDate`, `notes[]` |
-| Money                          | `montoOriginalText`, `montoOriginalAmount`, `montoOriginalCurrency` (`ARS` or `USD`, never converted)                                                                                                                                                                              |
-| Files & contact                | `expedientes[]` (`label`, `code`, `url`), `expediente`, `expedienteUrl`, `contactInfo`, `contactEmails[]`, `contactPhones[]`                                                                                                                                                       |
-| Documents                      | `documents[]` (`kind`, `tipo`, `nombre`, `url`, `id`), `documentCount`, `documentKinds[]`, `hasPliego`, `hasCircular`, `hasActaApertura`, `hasCuadroComparativo`, `hasPreadjudicacion`, `hasAdjudicacion`, `hasOrdenProvision`. Kinds: `pliego`, `circular`, `llamado`, `acta_apertura`, `nomina_oferentes`, `cuadro_comparativo`, `informe_comision`, `preadjudicacion`, `adjudicacion`, `orden_provision`, `documento_provision`, `planimetria`, `otros` |
-| Provenance                     | `detailFetched`, `detailError` (`UNPUBLISHED` when the site reports the process as not published), `contentHash` (the delta engine's change key)                                                                                                                                  |
-
-The dataset also exposes five ready-made views from the Output tab or the API (`?view=overview`, `?view=deadlines`, `?view=documents`, `?view=buyers`, `?view=changes`), plus CSV and Excel export. Records are appended oldest-first within a run (see Reliability below); read newest-first with `?desc=true`.
-
-## Reliability
-
-Delta mode (`onlyNew: true`) is a stateful engine, not a date filter, because the register itself exposes no publication or modification timestamp and gives amendments no trace in the listing:
-
-1. **Baseline run.** The first run walks each selected `estados` list newest-created first (`idGestion` descending, verified to paginate contiguously) and delivers up to `maxItems` processes, remembering for each one its list and a fingerprint of its detail page in a private, named key-value store (`santafe-compras-monitor-state-<deltaStateName>`). Everything created before the oldest process it delivered is treated as history and never delivered later - a small `maxItems` on the first run keeps the baseline cheap.
-2. **New and status-change detection.** Every later run walks each list newest-first again and stops once it meets known rows. A process never seen before is `NEW_LISTING`; a known process found in a different list is `STATUS_CHANGE` with `previousEstado` set. Because the AP and ET lists are small enough to walk in full each run, a process that vanished from them is probed on its own detail page - if it now reads _En Trámite_ or _Concluida_, it is delivered as `STATUS_CHANGE` even when the CO list itself is not monitored.
-3. **Amendment detection.** With `fetchDetail: true`, the Actor re-reads the detail page of every known process whose opening falls within `recheckWindowDays` or in the future, compares the stored fingerprint (`contentHash`, covering estado, dates, places, budget, expedientes, notes and the document list) and delivers only real changes as `UPDATED`. These re-reads are not charged.
-4. **Crash safety.** Records are delivered oldest-first and delta memory is written only for records actually stored, so a spending limit, timeout or platform migration mid-run never loses a process - the next run picks up where it left off instead of re-starting the walk.
-5. **Isolation.** Different filter sets get separate delta memories automatically; set `deltaStateName` to share one on purpose, and `resetState: true` to forget everything and re-baseline.
-
-The Actor also validates every listing response and fails the run loudly instead of returning an empty, "successful" dataset if the site's markup changes.
-
-## Pricing
+## Pricing (Pay-Per-Event)
 
 This Actor is pay-per-event, not pay-per-compute-unit - platform usage is included in the event price:
 
-| Event             | Price                  | When                                                                                                |
-| ------------------ | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| `result`            | $0.003 per record       | A record built with the full detail page (buyer, budget, deadline, rubros, documents, fingerprint)   |
-| `result-summary`    | $0.001 per record       | A listing-only record (`fetchDetail: false`, or a detail page the site reports as not published)     |
-| Actor start         | $0.00005                | Once per run                                                                                          |
+| Event | Price | Charged when |
+| --- | --- | --- |
+| `result` | **$0.003** per record | A record built from the full detail page (buyer, budget, deadline, rubros, documents, fingerprint) |
+| `result-summary` | **$0.001** per record | A listing-only record (`fetchDetail: false`, or a process the site reports as not yet published) |
 
-A quiet monitoring run that finds nothing new costs only the start fee. Detail requests spent on amendment re-checks (`recheckWindowDays`) and the status sweep are not charged unless they turn into a delivered record. Check the Actor's Pricing tab on Apify Store for the current, authoritative rates.
+A quiet monitoring run that finds nothing new stays essentially free: amendment re-checks (`recheckWindowDays`) and the AP/ET status sweep only turn into a charge when they actually surface a new, status-changed or amended record - re-reads that confirm nothing changed are not billed. Setting `fetchDetail: false` trims every delivered record to the cheaper `result-summary` tier when only the listing fields are needed.
 
-## Support & Enterprise SLA
+## Why not just scrape it yourself
 
-This is an independently developed and maintained Actor, not an enterprise vendor product - there is no contractual SLA. Bug reports and feature requests are welcome through the **Issues** tab of the Actor on Apify Store, and are typically answered within about 48 hours. Versioned changes are listed in the Actor's Changelog tab.
+- **Zero infrastructure.** No server to provision, no headless browser to keep patched, no Crawlee project to maintain - the Actor runs on Apify's platform and the crawling logic above is already handled.
+- **Managed scheduling.** Put it on an Apify schedule once and every run since the first is a delta against the previous one, with no cron box or database of your own to babysit.
+- **No proxy or session babysitting.** The register is a plain server-rendered site with no login wall, but request pacing, retries (network/408/425/429/5xx only) and timeouts (45 s listing, 30 s detail) are already tuned so a run doesn't silently stall or get throttled.
+- **Built-in delta and change detection you'd otherwise have to build.** A per-filter-set key-value store remembers every delivered process with its estado and a content fingerprint, detects status transitions even for processes that vanish from the AP/ET lists, and survives a spending-limit stop or platform migration mid-run without losing or duplicating a record - that state machine is most of the actual engineering effort here.
+
+## Known limitations
+
+- **Opening-date filters are client-side.** `openingFrom` / `openingTo` are applied after the listing is fetched, because the register itself exposes no date filter - rows outside the window are skipped and never remembered, not queried more cheaply.
+- **No true "last modified" signal.** The site publishes no modification timestamp, so amendment detection relies on periodically re-reading and fingerprinting each open process's detail page (`recheckWindowDays`) rather than a push notification from the source.
+- **Name-based filters resolve at run start.** `comprador`, `solicitante`, `rubro` and `subrubro` accepted as free text are matched against the site's own organism/rubro lists when the run starts; an ambiguous name fails the run with the candidate matches listed instead of guessing.
+- **Independently maintained, no contractual SLA.** This is a solo-maintained Actor, not an enterprise vendor product. Bug reports and feature requests go through the Issues tab on Apify Store and are typically answered within about 48 hours.
+
+## Integrate programmatically
+
+Both snippets below run the same delta-mode input as the CLI example and print the resulting records; see `run-monitor.js` and `run_monitor.py` in this repo.
+
+```bash
+npm install apify-client   # Node.js
+pip install apify-client   # Python
+```
+
+Set `APIFY_TOKEN` in your environment first (`apify auth token` if you use the CLI, or from the Apify Console's Integrations tab).
+
+---
+
+<div align="center">
+
+**Part of [Delta Registry](https://github.com/stefanoseggio)** - pay-per-event regulatory & compliance data infrastructure turning fragmented, alert-less government registers across Latin America into monitorable, delta-aware APIs.
+
+For professional inquiries or enterprise licensing: [linkedin.com/in/stefanoseggio-deltaregistry](https://www.linkedin.com/in/stefanoseggio-deltaregistry) · Rest of the fleet: [github.com/stefanoseggio](https://github.com/stefanoseggio)
+
+</div>

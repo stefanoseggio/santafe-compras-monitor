@@ -117,6 +117,44 @@ One real record (trimmed for length - every record carries 84 fields):
 
 A status change carries `event_type: "STATUS_CHANGE"` and `previousEstado`; an amendment carries `event_type: "UPDATED"`, `is_new: false` and typically `hasCircular: true` or a new `openingNote` such as `(*** NUEVA FECHA ***)`.
 
+## Instant Terminal Run (cURL)
+
+Runs synchronously and returns the resulting dataset items directly in the response - no polling needed. Get your token from [console.apify.com/settings/integrations](https://console.apify.com/settings/integrations).
+
+```bash
+curl -X POST "https://api.apify.com/v2/acts/jfoq1flE7KqKb3qAb/run-sync-get-dataset-items?token=<YOUR_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "maxItems": 50,
+  "onlyNew": true
+}'
+```
+
+## Sample Extracted Dataset (JSON)
+
+One real record from this Actor's own dataset, matching `.actor/dataset_schema.json`:
+
+```json
+{
+  "record_id": "139031",
+  "event_type": "NEW_LISTING",
+  "scraped_at": "2026-09-08T07:24:09.044Z",
+  "source_url": "https://www.santafe.gov.ar/gestionesdecompras/site/gestion.php?idGestion=139031",
+  "estado": "AP",
+  "tipoGestion": "LICITACION PUBLICA",
+  "numeroAnio": "06-2026",
+  "objeto": "CONTRATACION DE UN SERVICIO DE MANTENIMIENTO PREVENTIVO Y CORRECTIVO PARA CENTRAL TELEFONICA",
+  "comprador": "MINISTERIO DE GOBIERNO E INNOVACION PUBLICA",
+  "montoOriginalAmount": 60000,
+  "montoOriginalCurrency": "USD",
+  "expediente": "EE-2026-00006835-APPSF-PE",
+  "isElectronic": true,
+  "documentCount": 4,
+  "hasPliego": true,
+  "contentHash": "62c66a944a7fd695e0dbfe1cefec285c945fda10"
+}
+```
+
 ## Pricing (Pay-Per-Event)
 
 This Actor is pay-per-event, not pay-per-compute-unit - platform usage is included in the event price:

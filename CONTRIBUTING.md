@@ -8,6 +8,7 @@ This repository ships the real, buildable TypeScript source for the **Santa Fe A
 git clone https://github.com/stefanoseggio/santafe-compras-monitor.git
 cd santafe-compras-monitor
 npm install
+npm run build  # apify run launches `npm start` -> node dist/main.js; the compiled dist/ is gitignored, so build before the first run
 apify login    # one-time; stores your Apify token locally, needed only for `apify run`
 apify run --purge --input '{"estados":["AP"],"maxItems":20,"fetchDetail":false}'
 ```

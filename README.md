@@ -69,6 +69,7 @@ This Actor is pay-per-event, not pay-per-compute-unit - platform usage is includ
 | --- | --- | --- |
 | `result` | **$0.003** per record | A record built from the full detail page (buyer, budget, deadline, rubros, documents, fingerprint) |
 | `result-summary` | **$0.001** per record | A listing-only record (`fetchDetail: false`, or a process the site reports as not yet published) |
+| Actor start | **$0.00005** | Once per run, regardless of records delivered |
 
 - **No third-party API key required.** This Actor's `byok` status is `none` — everything it needs to run is included; there is no external service key to obtain, configure, or pay for separately.
 - **Unchanged records are never billed.** Every known process's detail page is compared against a persisted SHA-1 `contentHash` fingerprint from this Actor's own last run. A re-check (`recheckWindowDays`) that finds no change is not charged, and a quiet monitoring run that surfaces nothing new, status-changed or amended stays essentially free.
@@ -294,6 +295,7 @@ This repository contains the Actor's real, buildable TypeScript source under `sr
 git clone https://github.com/stefanoseggio/santafe-compras-monitor.git
 cd santafe-compras-monitor
 npm install
+npm run build  # apify run launches `npm start` -> node dist/main.js; the compiled dist/ is gitignored, so build before the first run
 apify login    # one-time; stores your Apify token locally
 apify run --purge --input '{"estados":["AP"],"maxItems":20,"fetchDetail":false}'
 ```

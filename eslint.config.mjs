@@ -6,7 +6,11 @@ import tsEslint from 'typescript-eslint';
 
 // eslint-disable-next-line import-x/no-default-export
 export default [
-    { ignores: ['**/dist', '**/test', 'eslint.config.mjs'] },
+    // examples/ is deliberately outside tsconfig.json's "include" - it holds
+    // the README's runnable Node.js example script, not part of src/'s build -
+    // type-aware linting via parserOptions.project can't parse a file outside
+    // the TS project, so it's excluded here rather than forced into scope.
+    { ignores: ['**/dist', '**/test', '**/examples', 'eslint.config.mjs'] },
     ...apify,
     prettier,
     {

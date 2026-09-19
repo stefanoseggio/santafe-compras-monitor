@@ -1,6 +1,6 @@
 {
     "name": "santafe-compras-monitor",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "type": "module",
     "description": "Santa Fe (Argentina) public tenders scraper & monitor: every licitación, concurso and contratación directa of the Province of Santa Fe's Gestiones de Compra register - buyer, budget (Monto Original), deadlines, rubros, expediente and pliego/circular/acta PDF links - with server-side filters and a delta mode that reports new tenders, status changes (AP -> ET -> CO) and amended documents.",
     "engines": {

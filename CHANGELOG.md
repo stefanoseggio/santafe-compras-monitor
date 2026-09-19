@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.0](https://github.com/stefanoseggio/santafe-compras-monitor/compare/santafe-compras-monitor-v2.0.0...santafe-compras-monitor-v3.0.0) (2026-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* v2.0 - server-side filters, newest-first delta engine with STATUS_CHANGE/UPDATED, 84-field records, crash-safe delivery
+
+### Features
+
+* delta engine (onlyNew/dateRange) + standardized B2B output envelope ([57c8d9d](https://github.com/stefanoseggio/santafe-compras-monitor/commit/57c8d9d7b86746abdb4f889ffc25c021b7acf061))
+* Santa Fe Compras Monitor - JSON API, full detail, no proxy needed ([f676469](https://github.com/stefanoseggio/santafe-compras-monitor/commit/f676469cef4f323065fe04cbbe683aa6039052c5))
+* v2.0 - server-side filters, newest-first delta engine with STATUS_CHANGE/UPDATED, 84-field records, crash-safe delivery ([f101169](https://github.com/stefanoseggio/santafe-compras-monitor/commit/f101169eeba5a4abede085a2a2c7436d966d7e34))
+
+
+### Bug Fixes
+
+* **ci:** pass RELEASE_PLEASE_TOKEN so release PRs skip the bot-approval gate ([71d208d](https://github.com/stefanoseggio/santafe-compras-monitor/commit/71d208d5dd8202b27e35b18e03bee57cd87da486))
+* cold-baseline snapshot replaces id-floor comparison; production start script + description length ([6660d50](https://github.com/stefanoseggio/santafe-compras-monitor/commit/6660d507c87ce31588f2ef2ebbe59d6d1f409f74))
+
 ## 2.0.1 - 2026-09-08
 
 ### Fixed

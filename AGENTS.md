@@ -153,6 +153,23 @@ offset (no Intl). Site timestamps were consistent with UTC-3 live.
   persist -> summary. Never pushes anything but records; fails the run on
   error (`Actor.fail`), so alerts fire.
 
+## HTTP transport: `impit`, not the native `fetch`
+
+`src/http.ts`'s `fetchWithRetry` calls a module-level `Impit` instance
+(`new Impit({ browser: 'chrome' })`, from the `impit` package) instead of
+the global `fetch` - added 2026-09-19 as a fleet-wide TLS-fingerprint-
+hardening pilot (proactive hardening, not a bug fix - Node's `fetch` isn't
+deprecated). santafe.gov.ar itself needs no User-Agent, cookie, proxy or JS
+today (see Access above) and has no WAF, so this doesn't fix anything
+currently broken here; it closes the gap between the Chrome UA `http.ts`
+already sends and Node's own (distinctively bot-shaped) TLS fingerprint,
+in case the site ever grows header- or fingerprint-based bot detection the
+way GrantConnect did. No test-mocking changes were needed for this actor:
+its test suite mocks `fetchWithRetry`/`fetchOptional` directly
+(`vi.mock('../src/http.js', ...)` in `walkListing.test.ts`,
+`main.delivery.test.ts` and `main.recheck.test.ts`), not the global
+`fetch`, so it was unaffected by the transport swap underneath.
+
 ## Delta engine invariants (do not break these)
 
 1. **State is written only for delivered records** (`markSeen` after a

@@ -1,6 +1,13 @@
 import { log } from 'apify';
+import { Impit } from 'impit';
 
 import { BASE_URL } from './urls.js';
+
+// One Impit instance per actor run: it holds the connection pool and TLS
+// session cache, and gives every request a real, internally-consistent
+// Chrome TLS/HTTP2 fingerprint instead of Node's native (and distinctively
+// bot-shaped) one - see AGENTS.md for why this was added.
+const impit = new Impit({ browser: 'chrome' });
 
 // santafe.gov.ar needs no User-Agent, cookie, proxy or JS (verified live
 // 2026-09-08: a bare request with an empty User-Agent gets HTTP 200). A
@@ -66,7 +73,7 @@ export async function fetchWithRetry(path: string, options: FetchOptions = {}): 
     let lastError: Error = new Error('unreachable');
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(url, {
+            const response = await impit.fetch(url, {
                 headers: BROWSER_HEADERS,
                 redirect: 'follow',
                 signal: AbortSignal.timeout(timeoutMs),
